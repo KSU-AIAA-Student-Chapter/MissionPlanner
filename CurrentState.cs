@@ -9,6 +9,10 @@ using MissionPlanner.Attributes;
 using MissionPlanner;
 using System.Collections;
 
+// Added by Jacob Wagner for AIAA
+using System.Data.SqlClient;
+using System.Data;
+
 namespace MissionPlanner
 {
     public class CurrentState : ICloneable
@@ -700,6 +704,8 @@ enum gcs_severity {
                         date1 = date1.AddMilliseconds(systime.time_unix_usec / 1000);
 
                         gpstime = date1;
+
+                        mavinterface.MAV.packets[(byte)MAVLink.MAVLINK_MSG_ID.SYSTEM_TIME] = null;
                     }
 
                     bytearray = mavinterface.MAV.packets[(byte)MAVLink.MAVLINK_MSG_ID.HWSTATUS];
@@ -1219,6 +1225,64 @@ enum gcs_severity {
             //low pass the outputs for better results!
         }
 
+        public static SqlConnection OpenAVUSI()
+        {
+            SqlConnectionStringBuilder sqlConnectionStringBuilder
+                = new SqlConnectionStringBuilder();
+ 
+            sqlConnectionStringBuilder.DataSource = "AVUSI";                           //use the IP address of the AUVSI laptop
+            sqlConnectionStringBuilder.InitialCatalog = "AVUSI";                         //this is the database name
+            sqlConnectionStringBuilder.IntegratedSecurity = true;                      //probably will set to false and user a UID and PWD later
+            sqlConnectionStringBuilder.MinPoolSize = 5;
+            sqlConnectionStringBuilder.MaxPoolSize = 2000;
+            sqlConnectionStringBuilder.Pooling = true;
+            sqlConnectionStringBuilder.ConnectTimeout = 200;         //added to solve timeout problem
+ 
+            SqlConnection sqlConnection
+                = new SqlConnection(sqlConnectionStringBuilder.ConnectionString);
+ 
+            try
+            {
+                sqlConnection.Open();
+            }
+            catch (InvalidOperationException ex)
+            {
+                System.Diagnostics.Debug.Print("OpenAVUSI(): ", ex.Message);
+            }
+            System.Diagnostics.Debug.Assert(sqlConnection.State == ConnectionState.Open);
+ 
+            return sqlConnection;
+        }
+
+
+        public static void LogTelemetry(DateTime timeStamp, double longitude, double latitude, SqlConnection sqlConnection) //add all other telemetry variables to this list
+        {
+            System.Diagnostics.Debug.Assert(sqlConnection != null, "sqlConnection == null");
+            System.Diagnostics.Debug.Assert(sqlConnection.State == ConnectionState.Open, "sqlConnection.State != ConnectionState.Open");
+ 
+            try
+            {
+ 
+                SqlCommand command = new SqlCommand(
+                    "INSERT INTO TelemetryLog (timestamp, longitude, latitude) " +
+                     " timestamp = @timestamp " +
+                     " longitude = @longitude " +
+                     " latitude = @latitude " +
+                   " WHERE ID = @ID;", sqlConnection);
+ 
+                command.Parameters.AddWithValue("@timestamp", timeStamp);
+                command.Parameters.AddWithValue("@longitude ", longitude);
+                command.Parameters.AddWithValue("@latitude ", latitude);
+ 
+                command.ExecuteNonQuery();
+ 
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.Print("LogTelemetry (): " + ex.Message);
+            }
+ 
+        }
         public class Mavlink_Sensors
         {
             BitArray bitArray = new BitArray(32);
