@@ -1148,7 +1148,7 @@ namespace MissionPlanner.GCSViews
                         lastscreenupdate = DateTime.Now;
 
                     }
-                    catch { }
+                    catch (Exception e ) { }
                 });
             }
         }

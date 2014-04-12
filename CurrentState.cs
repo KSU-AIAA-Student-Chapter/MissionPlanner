@@ -43,7 +43,9 @@ namespace MissionPlanner
             public int PhotoCounter { get; set; }
         }
 
-        public CameraTriggerDatabaseEntry CamDBEntry;
+        public CameraTriggerDatabaseEntry CamDBEntry = new CameraTriggerDatabaseEntry();
+
+        public Queue<CameraTriggerDatabaseEntry> CameraQueue = new Queue<CameraTriggerDatabaseEntry>();
 
         public SqlConnection sqlConnection = OpenAVUSI();
 
@@ -937,16 +939,9 @@ enum gcs_severity {
                         {
                             isCameraTriggerEntry = false;
                         }
-
-                        if(dBEntryStarted)
-                        {
-                            LogTelemetry(CamDBEntry, sqlConnection);
-                            dBEntryStarted = false;
-                        }
-                        else
-                        {
-                            dBEntryStarted = true;
-                        }
+                        // Attempt to log telemetry
+                        TryLogTelemetry(ref dBEntryStarted, CamDBEntry, sqlConnection, CameraQueue);
+           
 
                         //                    Console.WriteLine(roll + " " + pitch + " " + yaw);
 
@@ -979,15 +974,8 @@ enum gcs_severity {
                                 isCameraTriggerEntry = false;
                             }
 
-                            if (dBEntryStarted)
-                            {
-                                LogTelemetry(CamDBEntry, sqlConnection);
-                                dBEntryStarted = false;
-                            }
-                            else
-                            { 
-                                dBEntryStarted = true;
-                            }
+                            // Attempt to log telemetry
+                            TryLogTelemetry(ref dBEntryStarted, CamDBEntry, sqlConnection, CameraQueue);
                         }
 
                         gpsstatus = gps.fix_type;
@@ -1302,13 +1290,13 @@ enum gcs_severity {
             SqlConnectionStringBuilder sqlConnectionStringBuilder
                 = new SqlConnectionStringBuilder();
  
-            sqlConnectionStringBuilder.DataSource = "AVUSI";                           //use the IP address of the AUVSI laptop
+            sqlConnectionStringBuilder.DataSource = "localhost";                     //use the IP address of the AUVSI laptop
             sqlConnectionStringBuilder.InitialCatalog = "AVUSI";                         //this is the database name
             sqlConnectionStringBuilder.IntegratedSecurity = true;                      //probably will set to false and user a UID and PWD later
             sqlConnectionStringBuilder.MinPoolSize = 5;
             sqlConnectionStringBuilder.MaxPoolSize = 2000;
             sqlConnectionStringBuilder.Pooling = true;
-            sqlConnectionStringBuilder.ConnectTimeout = 30;         //added to solve timeout problem
+            sqlConnectionStringBuilder.ConnectTimeout = 5;                  //added to solve timeout problem
  
             SqlConnection sqlConnection
                 = new SqlConnection(sqlConnectionStringBuilder.ConnectionString);
@@ -1327,44 +1315,59 @@ enum gcs_severity {
         }
 
 
-        public static void LogTelemetry(CameraTriggerDatabaseEntry DBEntry, SqlConnection sqlConnection)
+        public static void TryLogTelemetry(ref bool dBEntryStarted, CameraTriggerDatabaseEntry DBEntry, SqlConnection sqlConnection, Queue<CameraTriggerDatabaseEntry> CameraQueue)
         {
-            
-            System.Diagnostics.Debug.Assert(sqlConnection != null, "sqlConnection == null");
-            System.Diagnostics.Debug.Assert(sqlConnection.State == ConnectionState.Open, "sqlConnection.State != ConnectionState.Open");
- 
-            try
+            if (dBEntryStarted)
             {
+                dBEntryStarted = false;
 
-                SqlCommand command = new SqlCommand(
-                    "INSERT INTO FlightTelemetry (Timestamp, Latitude, Longitutde, Altitude, Azimuth, Pitch, Roll, PhotoCounter) VALUES (" +
-                     "@timestamp, " +
-                     "@latitude," +
-                     "@longitude, " +
-                     "@altitude, " +
-                     "@azimuth, " +
-                     "@pitch, " +
-                     "@roll, " +
-                     "@photocounter); ", sqlConnection);
+                System.Diagnostics.Debug.Assert(sqlConnection != null, "sqlConnection == null");
+                System.Diagnostics.Debug.Assert(sqlConnection.State == ConnectionState.Open, "sqlConnection.State != ConnectionState.Open");
 
-                command.Parameters.AddWithValue("@timestamp", DBEntry.TimeStamp);
-                command.Parameters.AddWithValue("@latitude ", DBEntry.Latitude);
-                command.Parameters.AddWithValue("@longitude ", DBEntry.Longitude);
-                command.Parameters.AddWithValue("@altitude ", DBEntry.Altitude);
-                command.Parameters.AddWithValue("@azimuth ", DBEntry.Azimuth);
-                command.Parameters.AddWithValue("@pitch ", DBEntry.Pitch);
-                command.Parameters.AddWithValue("@roll ", DBEntry.Roll);
-                command.Parameters.AddWithValue("@photocounter ", DBEntry.PhotoCounter);
- 
-                command.ExecuteNonQuery();
- 
+                if (sqlConnection != null)
+                {
+                    try
+                    {
+                        SqlCommand command = new SqlCommand(
+                            "INSERT INTO FlightTelemetry (Timestamp, Latitude, Longitutde, Altitude, Azimuth, Pitch, Roll, PhotoCounter) VALUES (" +
+                             "@timestamp, " +
+                             "@latitude," +
+                             "@longitude, " +
+                             "@altitude, " +
+                             "@azimuth, " +
+                             "@pitch, " +
+                             "@roll, " +
+                             "@photocounter); ", sqlConnection);
+
+                        command.Parameters.AddWithValue("@timestamp", DBEntry.TimeStamp);
+                        command.Parameters.AddWithValue("@latitude ", DBEntry.Latitude);
+                        command.Parameters.AddWithValue("@longitude ", DBEntry.Longitude);
+                        command.Parameters.AddWithValue("@altitude ", DBEntry.Altitude);
+                        command.Parameters.AddWithValue("@azimuth ", DBEntry.Azimuth);
+                        command.Parameters.AddWithValue("@pitch ", DBEntry.Pitch);
+                        command.Parameters.AddWithValue("@roll ", DBEntry.Roll);
+                        command.Parameters.AddWithValue("@photocounter ", DBEntry.PhotoCounter);
+
+                        command.ExecuteNonQuery();
+
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.Print("LogTelemetry (): " + ex.Message);
+                    }
+                }
+                else 
+                {
+                    CameraQueue.Enqueue(DBEntry);
+                }
             }
-            catch (Exception ex)
+            else
             {
-                System.Diagnostics.Debug.Print("LogTelemetry (): " + ex.Message);
+                dBEntryStarted = true;
             }
  
         }
+
 
         public class Mavlink_Sensors
         {
