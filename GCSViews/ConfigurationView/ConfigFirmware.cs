@@ -24,6 +24,8 @@ namespace MissionPlanner.GCSViews.ConfigurationView
 
         string firmwareurl = "";
 
+        string custom_fw_dir = "";
+        
         Utilities.Firmware fw = new Utilities.Firmware();
 
         bool firstrun = true;
@@ -54,10 +56,6 @@ namespace MissionPlanner.GCSViews.ConfigurationView
         public ConfigFirmware()
         {
             InitializeComponent();
-
-            WebRequest.DefaultWebProxy.Credentials = System.Net.CredentialCache.DefaultCredentials;
-
-           
         }
 
         public void Activate()
@@ -70,19 +68,15 @@ namespace MissionPlanner.GCSViews.ConfigurationView
 
             if (MainV2.Advanced)
             {
-                lbl_px4bl.Visible = true;
                 lbl_devfw.Visible = true;
                 lbl_Custom_firmware_label.Visible = true;
-                lbl_px4io.Visible = true;
                 lbl_dlfw.Visible = true;
                 CMB_history_label.Visible = true;
             }
             else
             {
-                lbl_px4bl.Visible = false;
                 lbl_devfw.Visible = false;
                 lbl_Custom_firmware_label.Visible = false;
-                lbl_px4io.Visible = false;
                 lbl_dlfw.Visible = false;
                 CMB_history_label.Visible = false;
             }
@@ -310,7 +304,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
         {
             CMB_history.Enabled = false;
 
-            CMB_history.Items.Clear();
+            //CMB_history.Items.Clear();
             //CMB_history.Items.AddRange(fw.gholdurls);
             //CMB_history.Items.AddRange(fw.gcoldurls);
             CMB_history.DisplayMember = "Value";
@@ -326,9 +320,13 @@ namespace MissionPlanner.GCSViews.ConfigurationView
         private void Custom_firmware_label_Click(object sender, EventArgs e)
         {
             var fd = new OpenFileDialog { Filter = "Firmware (*.hex;*.px4)|*.hex;*.px4" };
+            if (Directory.Exists(custom_fw_dir))
+                fd.InitialDirectory = custom_fw_dir;
             fd.ShowDialog();
             if (File.Exists(fd.FileName))
             {
+                custom_fw_dir = Path.GetDirectoryName(fd.FileName);
+
                 fw.Progress -= fw_Progress;
                 fw.Progress += fw_Progress1;
 

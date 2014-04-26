@@ -1,4 +1,135 @@
-﻿* Mission Planner 1.2.95
+﻿* Mission Planner 1.3.1
+add test flight planner dock switch
+add more error handleing in varius locations.
+improve wp uploading
+switch order on simple pids screen.
+fix 3drradio config screen.
+fix mavlink getparam bug.
+fix updater forground issue #423
+fix datagridview clear issue on mono #426
+add filtering on basic tuning to fix #424
+update python script examples.
+add board voltage and servo rail voltage to status.
+
+* Mission Planner 1.3.0
+add MAVLinkSerialPort (serial tunnel)
+add spline support
+fix end dialog on default params when canceled
+add vertical support to coords control
+add gpsfix type 4,5 to hud
+add formated timeinair to hud
+allow 2 line input box
+add sphere and progressreportersphere
+add takeoff and land to gridui
+update mavlink library (rc_channels)
+add circularbuffer lib
+fix pointlatlongalt get bearing (deg-rad issue)
+make pointlatlngalt comparable via tag
+add 1 arc seconds srtm downloading (USA)
+add intopolated elevation from srtm
+add simple max value cheking.
+implement more advanced/simple mode.
+if offline, mp uses srtm for elevation verification.
+fix max zoom in flightplanner
+fix loading newer qgc mission files
+support do_jump commands in Flightplanner
+support splines in Flightplanner.
+support full path distance in Flightplanner (ie including jumps)
+add load shape file support, for missions. (needs attributes "wp","ELEVATION" and in lat,long)
+add joystick packet throttleing
+add subscription system to mavlink interface
+update 3dr radio uploader to support MAVLinkSerialPort
+enable row colours in DGV
+add RC Feel Roll/Pitch to simple pids
+add magcalib ellipsoid support.
+add new warnings engine.
+fix osdvideo.
+
+* Mission Planner 1.2.99
+fix error in selection in default settings
+update ftdi drivers
+tweak imagelabel to prevent exception
+add arrow to winddir
+update mavlink from upstream
+remove all legacy tooltip code
+remove legacy io/bl options
+add control-o/s in flight planner. load/save
+ap-mission prep for partial wp uploading support (only changed wp's)
+ap-mission add more error handeling on wp upload
+add support for global alt change by + and *
+tested MP with sitl, fixed any issues, for quad/flightgear
+add seperate joystick configs based on connect model type.
+fix kmz creation from px4 bin file (thanks randy)
+add fmt filtering to logbrowse. only shows messages that exist in log.
+add more exceptions handleing in wizard
+magcalib add support for log files. using mag and mag2
+magcalib add support for mag offsets and scaling. (not yet used)
+add Fullscreen option. (right click menu bar)
+
+* Mission Planner 1.2.98
+update default settings to refresh tab on use
+add additional drivers
+add translation to grid
+add est flight times to grid interface
+fix srtm exception
+fix throttle scaling on compass mot
+add mag calib mod from rh-galaxy
+remove mag calib test code until properly tested
+add messagetab
+add simple poi (WIP)
+add ability to enter wp in UTM coords
+joystick mods - add arm,disarm,servo,relay,mode changes. also hat switch to axis mapping
+mod logbrowse - needs work for ubuntu memory usage.
+fix DF log broswe header filter click
+fix mavlink log dl extra line feeds
+mod gpx outputs to include wpt
+modify update check to reduce dupe dl on fail
+modify update check to use random query string to stop proxys
+add more logging to version detect.
+update wix installer
+wizard - auto select correct comport on load.
+wizard - add connect retry on fail
+wizard - fail wizard on serialport drop.
+wizard - fix arm check to stay green and add warnings about prop spin
+fix link quality indicator on link loss
+add more fw history
+decrease frequency of new fw check
+remove wizard from first time use.
+allow more http requests
+add initial loganlysis code. (WIP)
+
+* Mission Planner 1.2.97
+change log browse to virtualmode. much faster on windows
+fix for posible future update bug
+
+* Mission Planner 1.2.96
+add ability to change text on buttons in servo tab
+modify some hud user item decimal places
+update mavlink
+add compassmot via mavlink
+add simplegrid
+fix current sensor loading
+add bearing to FP tab, for last wp and mouse pos.
+fix ft/m issue with rallypoints
+add more errorchecking to dflog browse (logs without FMT  messages)
+fix mono check box drawing issue in log browse
+add hh:mm:ss to mavlink log review data points
+tweak df log download over mavlink
+add rts/cts to 3dr radio config
+add better version detection
+fix timeinair counter when playing back log at something other than 1x
+update fw historys
+remove default setings, moved to frame type
+add serial port nice name cache
+cleanup udp on 2nd connect 
+modify gridui to put cam trig distance as part of mission.
+add new AS sensor support.
+fix a few exceptions
+add reboot command to end of terminal
+try simplefy pixhawk fw upload.
+BG work on joystick
+
+* Mission Planner 1.2.95
 move Advanced view to a higher function
 modify georef as per new offsets, and made tlog the same
 add filter to .param file listing

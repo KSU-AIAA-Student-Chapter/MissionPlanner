@@ -21,8 +21,6 @@ namespace MissionPlanner.Log
     public partial class LogBrowse : Form
     {
         private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
-        int m_iColumnCount = 0;
-        int rowno = 1;
         DataTable m_dtCSV = new DataTable();
 
         List<DFLog.DFItem> logdata;
@@ -109,13 +107,15 @@ namespace MissionPlanner.Log
 
             myGMAP1.Overlays.Add(mapoverlay);
 
+            //CMB_preselect.DisplayMember = "Name";
             CMB_preselect.DataSource = graphs;
-            CMB_preselect.DisplayMember = "Name";
+
+            MissionPlanner.Utilities.Tracking.AddPage(this.GetType().ToString(), this.Text);
         }
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            rowno = 1;
+            Hashtable seenmessagetypes = new Hashtable();
 
             OpenFileDialog openFileDialog1 = new OpenFileDialog();
             openFileDialog1.Filter = "Log Files|*.log;*.bin";
@@ -132,17 +132,29 @@ namespace MissionPlanner.Log
 
                     if (openFileDialog1.FileName.ToLower().EndsWith(".bin"))
                     {
-                        // extract log
-                        List<string> loglines = BinaryLog.ReadLog(openFileDialog1.FileName);
-                        // convert log to memory stream;
-                        stream = new MemoryStream();
-                        // create single string with entire log
+                        log.Info("before " + (GC.GetTotalMemory(false) / 1024.0 / 1024.0));
+                        // extract log - converts to assci lines
+                        var loglines = BinaryLog.ReadLog(openFileDialog1.FileName);
+                        log.Info("loglines " + (GC.GetTotalMemory(false) / 1024.0 / 1024.0));
+                        GC.Collect();
+                        log.Info("loglines2 " + (GC.GetTotalMemory(false) / 1024.0 / 1024.0));
+                        // create temp file 
+                        string tempfile = Path.GetTempFileName();
+                        log.Info("temp file "+tempfile);
+                        stream = File.Open(tempfile,FileMode.Create,FileAccess.ReadWrite,FileShare.Delete);
+                        // save ascii lines to file
                         foreach (string line in loglines)
                         {
                             stream.Write(ASCIIEncoding.ASCII.GetBytes(line), 0, line.Length);
                         }
+                        stream.Flush();
                         // back to stream start
                         stream.Seek(0, SeekOrigin.Begin);
+                        loglines.Clear();
+                        loglines = null;
+                        // force memory reclaim after loglines clear
+                        GC.Collect();
+                        log.Info("loglines.clear " + (GC.GetTotalMemory(false) / 1024.0 / 1024.0));
                     }
                     else
                     {
@@ -152,18 +164,27 @@ namespace MissionPlanner.Log
                     logdata = DFLog.ReadLog(stream);
 
                     this.Text = "Log Browser - " + Path.GetFileName(openFileDialog1.FileName);
+                    log.Info("about to create DataTable " + (GC.GetTotalMemory(false) / 1024.0 / 1024.0));
                     m_dtCSV = new DataTable();
 
-                    log.Info("process to datagrid " + (GC.GetTotalMemory(false)/1024.0));
+                    log.Info("process to datagrid " + (GC.GetTotalMemory(false)/1024.0/1024.0));
+
+                    bool largelog = logdata.Count > 500000 ? true : false;
 
                     foreach (var item in logdata)
                     {
+
                         if (item.items != null)
                         {
                             while (m_dtCSV.Columns.Count < (item.items.Length + typecoloum))
                             {
                                 m_dtCSV.Columns.Add();
                             }
+
+                            seenmessagetypes[item.msgtype] = "";
+
+                            if (largelog)
+                                continue;
 
                             DataRow dr = m_dtCSV.NewRow();
 
@@ -179,19 +200,40 @@ namespace MissionPlanner.Log
                         }
                     }
 
-                    log.Info("Done " + (GC.GetTotalMemory(false) / 1024.0));
+                    log.Info("Done " + (GC.GetTotalMemory(false) / 1024.0 / 1024.0));
 
                     //PopulateDataTableFromUploadedFile(stream);
 
                     stream.Close();
 
-                    log.Info("set dgv datasourse " + (GC.GetTotalMemory(false) / 1024.0));
+                    log.Info("set dgv datasourse " + (GC.GetTotalMemory(false) / 1024.0 / 1024.0));
 
-                    dataGridView1.DataSource = m_dtCSV;
+                    if (MainV2.MONO)
+                    {
+                        //if (m_dtCSV.Rows.Count > 5000)
+                       // {
+                       //     CustomMessageBox.Show("This log apears to be a large log, the grid view will be disabled.\nAll graphing will still work however", "Large Log");
+                       //     dataGridView1.Visible = false;
+                       // }
+                       // else
+                        {
+                            BindingSource bs = new BindingSource();
+                            bs.DataSource = m_dtCSV;
+                            dataGridView1.DataSource = bs;
+                        }
+                    }
+                    else
+                    {
+                        dataGridView1.VirtualMode = true;
+                        dataGridView1.RowCount = logdata.Count;
+                        dataGridView1.ColumnCount = m_dtCSV.Columns.Count;
+                    }
+
+        
 
                     dataGridView1.Columns[0].Visible = false;
 
-                    log.Info("datasource set " + (GC.GetTotalMemory(false) / 1024.0));
+                    log.Info("datasource set " + (GC.GetTotalMemory(false) / 1024.0 / 1024.0));
 
                 }
                 catch (Exception ex) { CustomMessageBox.Show("Failed to read File: " + ex.ToString()); }
@@ -204,7 +246,7 @@ namespace MissionPlanner.Log
 
                 CreateChart(zg1);
 
-                ResetTreeView();
+                ResetTreeView(seenmessagetypes);
 
                 if (DFLog.logformat.Count == 0)
                 {
@@ -236,7 +278,7 @@ namespace MissionPlanner.Log
             }
         }
 
-        private void ResetTreeView()
+        private void ResetTreeView(Hashtable seenmessagetypes)
         {
             treeView1.Nodes.Clear();
 
@@ -245,16 +287,23 @@ namespace MissionPlanner.Log
             foreach (DFLog.Label item in sorted.Values)
             {
                 TreeNode tn = new TreeNode(item.Name);
-                treeView1.Nodes.Add(tn);
-                foreach (var item1 in item.FieldNames)
+
+                if (seenmessagetypes.ContainsKey(item.Name))
                 {
-                    tn.Nodes.Add(item1);
+                    treeView1.Nodes.Add(tn);
+                    foreach (var item1 in item.FieldNames)
+                    {
+                        tn.Nodes.Add(item1);
+                    }
                 }
             }
         }
 
         private void dataGridView1_RowEnter(object sender, DataGridViewCellEventArgs e)
         {
+            if (dataGridView1.ColumnCount < typecoloum)
+                return;
+
             try
             {
                 // number the coloums
@@ -424,15 +473,15 @@ namespace MissionPlanner.Log
 
         void graphit_clickprocess(bool left = true)
         {
-            if (dataGridView1.RowCount == 0 || dataGridView1.ColumnCount == 0)
+            if (dataGridView1 == null || dataGridView1.RowCount == 0 || dataGridView1.ColumnCount == 0)
             {
-                CustomMessageBox.Show("Please load a valid file");
+                CustomMessageBox.Show("Please load a valid file", "Error");
                 return;
             }
 
             if (dataGridView1.CurrentCell == null)
             {
-                CustomMessageBox.Show("Please select a cell first");
+                CustomMessageBox.Show("Please select a cell first", "Error");
                 return;
             }
 
@@ -442,7 +491,25 @@ namespace MissionPlanner.Log
 
             if (col == 0)
             {
-                CustomMessageBox.Show("Please pick another column, Highlight the cell you wish to graph");
+                CustomMessageBox.Show("Please pick another column, Highlight the cell you wish to graph", "Error");
+                return;
+            }
+
+            if (!DFLog.logformat.ContainsKey(type))
+            {
+                CustomMessageBox.Show("Your log file doesnt contain the required FMT messages","Error");
+                return;
+            }
+
+            if ((col - typecoloum - 1) < 0)
+            {
+                CustomMessageBox.Show("Cannot graph this field", "Error");
+                return;
+            }
+
+            if (DFLog.logformat[type].FieldNames.Length <= (col - typecoloum - 1))
+            {
+                CustomMessageBox.Show("Invalid Field (not in FMT)", "Error");
                 return;
             }
 
@@ -472,7 +539,17 @@ namespace MissionPlanner.Log
                 }
             }
 
-            int col = FindInArray(DFLog.logformat[type].FieldNames, fieldname) + 1;
+            if (!DFLog.logformat.ContainsKey(type))
+            {
+                CustomMessageBox.Show("No FMT message for "+type + " - " + fieldname,"Error");
+                return;
+            }
+
+            int col = DFLog.FindMessageOffset(type, fieldname);
+
+            // field does not exist
+            if (col == -1)
+                return;
 
             PointPairList list1 = new PointPairList();
 
@@ -541,13 +618,13 @@ namespace MissionPlanner.Log
                     if (!DFLog.logformat.ContainsKey("ERR"))
                         return;
 
-                    int index = FindInArray(DFLog.logformat["ERR"].FieldNames, "Subsys") + 1;
+                    int index = DFLog.FindMessageOffset("ERR", "Subsys");
                     if (index == -1)
                     {
                         continue;
                     }
 
-                    int index2 = FindInArray(DFLog.logformat["ERR"].FieldNames, "ECode") + 1;
+                    int index2 = DFLog.FindMessageOffset("ERR", "ECode");
                     if (index2 == -1)
                     {
                         continue;
@@ -586,7 +663,7 @@ namespace MissionPlanner.Log
                     if (!DFLog.logformat.ContainsKey("MODE"))
                         return;
 
-                    int index = FindInArray(DFLog.logformat["MODE"].FieldNames, "Mode") + 1;
+                    int index = DFLog.FindMessageOffset("MODE", "Mode");
                     if (index == -1)
                     {
                         continue;
@@ -626,7 +703,7 @@ namespace MissionPlanner.Log
                     if (!DFLog.logformat.ContainsKey("GPS"))
                         break;
 
-                    int index = FindInArray(DFLog.logformat["GPS"].FieldNames, "TimeMS") + 1;
+                    int index = DFLog.FindMessageOffset("GPS", "TimeMS");
                     if (index == -1)
                     {
                         a++;
@@ -698,19 +775,19 @@ namespace MissionPlanner.Log
                 if (!DFLog.logformat.ContainsKey("GPS"))
                     return null;
 
-                int index = FindInArray(DFLog.logformat["GPS"].FieldNames, "Lat") + 1;
+                int index = DFLog.FindMessageOffset("GPS", "Lat");
                 if (index == -1)
                 {
                     return null;
                 }
 
-                int index2 = FindInArray(DFLog.logformat["GPS"].FieldNames, "Lng") + 1;
+                int index2 = DFLog.FindMessageOffset("GPS", "Lng");
                 if (index2 == -1)
                 {
                     return null;
                 }
 
-                int index3 = FindInArray(DFLog.logformat["GPS"].FieldNames, "Status") + 1;
+                int index3 = DFLog.FindMessageOffset("GPS", "Status");
                 if (index3 == -1)
                 {
                     return null;
@@ -778,8 +855,6 @@ namespace MissionPlanner.Log
 
         private void BUT_loadlog_Click(object sender, EventArgs e)
         {
-            // reset column count
-            m_iColumnCount = 0;
             // clear existing lists
             zg1.GraphPane.CurveList.Clear();
             // reload
@@ -814,11 +889,25 @@ namespace MissionPlanner.Log
 
             if (opt.SelectedItem != "")
             {
-                (dataGridView1.DataSource as DataTable).DefaultView.RowFilter = dataGridView1.Columns[typecoloum].Name + " like '" + opt.SelectedItem + "'";
+                m_dtCSV.DefaultView.RowFilter = m_dtCSV.Columns[typecoloum].ColumnName + " like '" + opt.SelectedItem + "'";
+
+                if (!MainV2.MONO)
+                {
+                    dataGridView1.VirtualMode = true;
+                    dataGridView1.Rows.Clear();
+                    dataGridView1.RowCount = m_dtCSV.DefaultView.Count;
+                }
             }
             else
             {
-                (dataGridView1.DataSource as DataTable).DefaultView.RowFilter = "";
+                m_dtCSV.DefaultView.RowFilter = "";
+
+                if (!MainV2.MONO)
+                {
+                    dataGridView1.VirtualMode = true;
+                    dataGridView1.Rows.Clear();
+                    dataGridView1.RowCount = m_dtCSV.DefaultView.Count;
+                }
             }
 
             /*
@@ -841,6 +930,7 @@ namespace MissionPlanner.Log
 
             dataGridView1.ResumeLayout();
              * */
+            dataGridView1.Invalidate();
         }
 
         void BUT_go_Click(object sender, EventArgs e)
@@ -968,14 +1058,19 @@ namespace MissionPlanner.Log
                 }
                 else
                 {
+                    List<CurveItem> removeitems = new List<CurveItem>();
+
                     foreach (var item in zg1.GraphPane.CurveList)
                     {
                         if (item.Label.Text.StartsWith(e.Node.Text))
                         {
-                            zg1.GraphPane.CurveList.Remove(item);
-                            break;
+                            removeitems.Add(item);
+                            //break;
                         }
                     }
+
+                    foreach (var item in removeitems)
+                        zg1.GraphPane.CurveList.Remove(item);
                 }
 
                 zg1.Invalidate();
@@ -1004,33 +1099,27 @@ namespace MissionPlanner.Log
 
         private void treeView1_DrawNode(object sender, DrawTreeNodeEventArgs e)
         {
+            var area = e.Node.Bounds;
+
             if (e.Node.Parent == null)
             {
-
-                var area = e.Node.Bounds;
-
                 area.X -= 17;
                 area.Width += 17;
 
-                using (SolidBrush brush = new SolidBrush(treeView1.BackColor))
-                {
-                    e.Graphics.FillRectangle(brush, area);
-                }
-
-
-
-                TextRenderer.DrawText(e.Graphics, e.Node.Text, treeView1.Font, e.Node.Bounds, treeView1.ForeColor, treeView1.BackColor);
-
-                if ((e.State & TreeNodeStates.Focused) == TreeNodeStates.Focused)
-                {
-                    ControlPaint.DrawFocusRectangle(e.Graphics, e.Node.Bounds, treeView1.ForeColor, treeView1.BackColor);
-                }
-
-                e.DrawDefault = true;
             }
-            else
+
+            using (SolidBrush brush = new SolidBrush(treeView1.BackColor))
             {
-                e.DrawDefault = true;
+                e.Graphics.FillRectangle(brush, area);
+            }
+
+
+
+            TextRenderer.DrawText(e.Graphics, e.Node.Text, treeView1.Font, e.Node.Bounds, treeView1.ForeColor, treeView1.BackColor);
+
+            if ((e.State & TreeNodeStates.Focused) == TreeNodeStates.Focused)
+            {
+                ControlPaint.DrawFocusRectangle(e.Graphics, e.Node.Bounds, treeView1.ForeColor, treeView1.BackColor);
             }
         }
 
@@ -1041,6 +1130,31 @@ namespace MissionPlanner.Log
             dataGridView1.DataSource = null;
             mapoverlay = null;
             GC.Collect();
+        }
+
+        private void dataGridView1_CellValueNeeded(object sender, DataGridViewCellValueEventArgs e)
+        {
+            try
+            {
+                if (e.ColumnIndex == 0)
+                {
+                    e.Value = logdata[e.RowIndex].lineno;
+                }
+                else if (e.ColumnIndex == 1)
+                {
+                    e.Value = logdata[e.RowIndex].time.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                }
+                else if (e.ColumnIndex < logdata[e.RowIndex].items.Length + 2)
+                {
+                    e.Value = logdata[e.RowIndex].items[e.ColumnIndex - 2];
+                }
+                else
+                {
+                    e.Value = null;
+                }
+            
+            }
+            catch { }
         }
     }
 }

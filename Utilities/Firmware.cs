@@ -62,7 +62,7 @@ namespace MissionPlanner.Utilities
                     return hash;
 
                 var url = new Uri(hash);
-                return new Uri(url, filename, true).AbsoluteUri;
+                return new Uri(url, filename).AbsoluteUri;
             }
 
             foreach (string x in gholdurls)
@@ -126,7 +126,7 @@ namespace MissionPlanner.Utilities
 
                     try
                     {
-                            niceNames.Add(new KeyValuePair<string, string>(gholdurls[a], gh.Substring(index+1).Trim()));
+                        niceNames.Add(new KeyValuePair<string, string>(gholdurls[a], gh.Substring(index + 1).Trim()));
                     }
                     catch { niceNames.Add(new KeyValuePair<string, string>(gholdurls[a], gholdurls[a])); }
 
@@ -273,9 +273,9 @@ namespace MissionPlanner.Utilities
         {
             System.Xml.Serialization.XmlSerializer writer = new System.Xml.Serialization.XmlSerializer(typeof(List<software>), new Type[] { typeof(software) });
 
-            using (StreamWriter sw = new StreamWriter("fwversions.xml"))
+            using (StreamWriter sw = new StreamWriter(Application.StartupPath + Path.DirectorySeparatorChar + "fwversions.xml"))
             {
-                    writer.Serialize(sw, list);
+                writer.Serialize(sw, list);
             }
         }
 
@@ -283,7 +283,7 @@ namespace MissionPlanner.Utilities
         {
             System.Xml.Serialization.XmlSerializer reader = new System.Xml.Serialization.XmlSerializer(typeof(List<software>), new Type[] { typeof(software) });
 
-            using (StreamReader sr = new StreamReader("fwversions.xml"))
+            using (StreamReader sr = new StreamReader(Application.StartupPath + Path.DirectorySeparatorChar + "fwversions.xml"))
             {
                 return (List<software>)reader.Deserialize(sr);
             }
@@ -516,25 +516,33 @@ namespace MissionPlanner.Utilities
             {
                 fw = px4uploader.Firmware.ProcessFirmware(filename);
             }
-            catch (Exception ex) { 
-                CustomMessageBox.Show("Error loading firmware file\n\n"+ ex.ToString(),"Error"); 
+            catch (Exception ex)
+            {
+                CustomMessageBox.Show("Error loading firmware file\n\n" + ex.ToString(), "Error");
                 return false;
             }
 
             try
             {
-              //  MainV2.comPort.BaseStream.Open();
-                if (MainV2.comPort.BaseStream.IsOpen)
+                // check if we are seeing heartbeats
+                MainV2.comPort.BaseStream.Open();
+                MainV2.comPort.giveComport = true;
+
+                if (MainV2.comPort.getHeartBeat().Length > 0)
                 {
                     MainV2.comPort.doReboot(true);
                     MainV2.comPort.Close();
                 }
                 else
                 {
+                    MainV2.comPort.BaseStream.Close();
                     CustomMessageBox.Show("Please unplug the board, and then press OK and plug back in.\nMission Planner will look for 30 seconds to find the board");
                 }
             }
-            catch {
+            catch (Exception ex)
+            {
+                log.Error(ex);
+                CustomMessageBox.Show("Please unplug the board, and then press OK and plug back in.\nMission Planner will look for 30 seconds to find the board");
             }
 
             DateTime DEADLINE = DateTime.Now.AddSeconds(30);
@@ -578,9 +586,16 @@ namespace MissionPlanner.Utilities
 
                     try
                     {
+                        up.verifyotp();
+                    }
+                    catch { CustomMessageBox.Show("This board does not contain a valid certificate of authenticity.", "Invalid Cert"); up.__reboot(); up.close(); return false; }
+
+                    try
+                    {
                         up.currentChecksum(fw);
                     }
-                    catch {
+                    catch
+                    {
                         up.__reboot();
                         up.close();
                         CustomMessageBox.Show("No need to upload. already on the board");
@@ -608,7 +623,8 @@ namespace MissionPlanner.Utilities
                         up.close();
                     }
 
-                    CustomMessageBox.Show("Please unplug, and plug back in your px4 NOW, and wait for the musical tones before clicking OK");
+                    // wait for IO firmware upgrade and boot to a mavlink state
+                    CustomMessageBox.Show("Please wait for the musical tones to finish before clicking OK");
 
                     return true;
                 }
@@ -640,7 +656,7 @@ namespace MissionPlanner.Utilities
         /// <param name="board"></param>
         public bool UploadFlash(string comport, string filename, BoardDetect.boards board)
         {
-            if (board == BoardDetect.boards.px4|| board == BoardDetect.boards.px4v2)
+            if (board == BoardDetect.boards.px4 || board == BoardDetect.boards.px4v2)
             {
                 return UploadPX4(filename);
             }
@@ -744,7 +760,7 @@ namespace MissionPlanner.Utilities
                 }
                 else
                 {
-                    updateProgress(0,"Failed upload");
+                    updateProgress(0, "Failed upload");
                     CustomMessageBox.Show("Communication Error - no connection");
                 }
                 port.Close();
@@ -767,7 +783,7 @@ namespace MissionPlanner.Utilities
             }
             catch (Exception ex)
             {
-                updateProgress(0,"Failed upload");
+                updateProgress(0, "Failed upload");
                 CustomMessageBox.Show("Check port settings or Port in use? " + ex);
                 try
                 {
@@ -804,7 +820,7 @@ namespace MissionPlanner.Utilities
                     int length = Convert.ToInt32(line.Substring(1, 2), 16);
                     int address = Convert.ToInt32(line.Substring(3, 4), 16);
                     int option = Convert.ToInt32(line.Substring(7, 2), 16);
-                   // log.InfoFormat("len {0} add {1} opt {2}", length, address, option);
+                    // log.InfoFormat("len {0} add {1} opt {2}", length, address, option);
 
                     if (option == 0)
                     {

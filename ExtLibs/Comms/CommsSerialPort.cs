@@ -74,7 +74,15 @@ namespace MissionPlanner.Comms
                 if (!File.Exists(PortName))
                     throw new Exception("No such device");
 
-            base.Open();
+            try
+            {
+                base.Open();
+            }
+            catch {
+                try { base.Close(); }
+                catch { }
+                throw;
+            }
         }
 
         public void toggleDTR()
@@ -124,12 +132,35 @@ namespace MissionPlanner.Comms
 
                 if (Directory.Exists("/dev/"))
                 {
-                    if (Directory.Exists("/dev/serial/by-id/"))
-                        allPorts.AddRange(Directory.GetFiles("/dev/serial/by-id/", "*"));
-                    allPorts.AddRange(Directory.GetFiles("/dev/", "ttyACM*"));
-                    allPorts.AddRange(Directory.GetFiles("/dev/", "ttyUSB*"));
-                    allPorts.AddRange(Directory.GetFiles("/dev/", "rfcomm*"));
-                    allPorts.AddRange(Directory.GetFiles("/dev/", "*usb*"));
+                    // cleanup now
+                    GC.Collect();
+                    // mono is failing in here on linux "too many open files"
+                    try
+                    {
+                        if (Directory.Exists("/dev/serial/by-id/"))
+                            allPorts.AddRange(Directory.GetFiles("/dev/serial/by-id/", "*"));
+                    }
+                    catch { }
+                    try
+                    {
+                        allPorts.AddRange(Directory.GetFiles("/dev/", "ttyACM*"));
+                    }
+                    catch { }
+                    try
+                    {
+                        allPorts.AddRange(Directory.GetFiles("/dev/", "ttyUSB*"));
+                    }
+                    catch { }
+                    try
+                    {
+                        allPorts.AddRange(Directory.GetFiles("/dev/", "rfcomm*"));
+                    }
+                    catch { }
+                    try
+                    {
+                        allPorts.AddRange(Directory.GetFiles("/dev/", "*usb*"));
+                    }
+                    catch { }
                 }
 
                 string[] ports = System.IO.Ports.SerialPort.GetPortNames()
@@ -143,13 +174,22 @@ namespace MissionPlanner.Comms
             }
         }
 
+        static Dictionary<string, string> comportnamecache = new Dictionary<string, string>();
+
         public static string GetNiceName(string port)
         {
             // make sure we are exclusive
-            lock (portnamenice)
+            lock (locker)
             {
                 log.Info("start GetNiceName " + port);
                 portnamenice = "";
+
+                if (comportnamecache.ContainsKey(port))
+                {
+                    log.Info("done GetNiceName cache " + port);
+                    return comportnamecache[port];
+                }
+
                 try
                 {
                     CallWithTimeout(new Action<string>(GetName), 1000, port);
@@ -158,6 +198,9 @@ namespace MissionPlanner.Comms
                 {
                 }
                 log.Info("done GetNiceName " + port + " = " + portnamenice);
+
+                comportnamecache[port] = portnamenice;
+
                 return (string)portnamenice.Clone();
             }
         }
@@ -249,7 +292,7 @@ namespace MissionPlanner.Comms
         }
     }
 
-    public class SerialPortFixer : IDisposable
+    public sealed class SerialPortFixer : IDisposable
     {
         public static void Execute(string portName)
         {
@@ -266,6 +309,7 @@ namespace MissionPlanner.Comms
                 m_Handle.Close();
                 m_Handle = null;
             }
+            GC.SuppressFinalize(this);
         }
 
         #endregion

@@ -20,6 +20,9 @@ using MissionPlanner.Arduino;
 using MissionPlanner.Utilities;
 using GMap.NET;
 using System.Xml;
+using IronPython.Hosting;
+using IronPython.Runtime.Operations;
+using System.Net.Sockets;
 
 namespace MissionPlanner
 {
@@ -1038,7 +1041,7 @@ namespace MissionPlanner
 
             if (File.Exists(ofd.FileName))
             {
-                List<string> log = Log.BinaryLog.ReadLog(ofd.FileName);
+                var log = Log.BinaryLog.ReadLog(ofd.FileName);
 
                 SaveFileDialog sfd = new SaveFileDialog();
                 sfd.Filter = "log|*.log";
@@ -1060,13 +1063,6 @@ namespace MissionPlanner
         private void BUT_followleader_Click(object sender, EventArgs e)
         {
             new Swarm.FollowPathControl().Show();
-        }
-
-        private void BUT_compassmot_Click(object sender, EventArgs e)
-        {
-            MissionPlanner.MagMotor mot = new MissionPlanner.MagMotor();
-
-            mot.StartCalibration();
         }
 
         private void BUT_driverclean_Click(object sender, EventArgs e)
@@ -1175,6 +1171,105 @@ namespace MissionPlanner
 
                 xmlwriter.WriteEndElement();
                 xmlwriter.WriteEndDocument();
+            }
+        }
+
+        private void but_loganalysis_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog ofd = new OpenFileDialog();
+
+            ofd.ShowDialog();
+
+            if (ofd.FileName != "")
+            {
+                string xmlfile = LogAnalyzer.CheckLogFile(ofd.FileName);
+
+                if (File.Exists(xmlfile))
+                {
+                    var out1 = LogAnalyzer.Results(xmlfile);
+
+                    MissionPlanner.Controls.LogAnalyzer frm = new Controls.LogAnalyzer(out1);
+
+                    frm.Show();
+                }
+                else
+                {
+                    CustomMessageBox.Show("Bad input file");
+                }
+            }
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            Warnings.WarningsManager frm = new Warnings.WarningsManager();
+
+            frm.Show();
+        }
+		
+        Comms.MAVLinkSerialPort comport;
+
+        TcpListener listener;
+
+        private void but_mavserialport_Click(object sender, EventArgs e)
+        {
+            comport = new Comms.MAVLinkSerialPort(MainV2.comPort, MAVLink.SERIAL_CONTROL_DEV.GPS1);
+
+            if (listener != null)
+            {
+                listener.Stop();
+                listener = null;
+            }
+
+            listener = new TcpListener(IPAddress.Any,500);
+
+            listener.Start();
+
+            listener.BeginAcceptTcpClient(new AsyncCallback(DoAcceptTcpClientCallback), listener);
+        }
+
+        private void DoAcceptTcpClientCallback(IAsyncResult ar)
+        {
+                   // Get the listener that handles the client request.
+            TcpListener listener = (TcpListener)ar.AsyncState;
+
+            // End the operation and display the received data on  
+            // the console.
+            using (
+            TcpClient client = listener.EndAcceptTcpClient(ar))
+            {
+                NetworkStream stream = client.GetStream();
+
+                comport.Open();
+
+                while (true)
+                {
+
+                    while (stream.DataAvailable)
+                    {
+                        var data = new byte[4096];
+                        try
+                        {
+                            int len = stream.Read(data, 0, data.Length);
+
+                            comport.Write(data, 0, len);
+                        }
+                        catch { }
+                    }
+
+                    while (comport.BytesToRead > 0)
+                    {
+                        var data = new byte[4096];
+                        try
+                        {
+                        int len = comport.Read(data, 0, data.Length);
+
+                        stream.Write(data, 0, len);
+                        }
+                        catch { }
+                    }
+
+                   // System.Threading.Thread.Sleep(1);
+                }
             }
         }
     }

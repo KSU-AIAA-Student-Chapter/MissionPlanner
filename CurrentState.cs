@@ -171,7 +171,7 @@ namespace MissionPlanner
         public bool failsafe { get; set; }
 
         [DisplayText("RX Rssi")]
-        public float rxrssi { get; set; }
+        public int rxrssi { get; set; }
         //radio
         public float ch1in { get; set; }
         public float ch2in { get; set; }
@@ -278,8 +278,6 @@ namespace MissionPlanner
 
         //airspeed_error = (airspeed_error - airspeed);
 
-
-
         //message
         public List<string> messages { get; set; }
         internal string message { get { if (messages.Count == 0) return ""; return messages[messages.Count - 1]; } }
@@ -289,13 +287,13 @@ namespace MissionPlanner
 
         //battery
         [DisplayText("Bat Voltage (V)")]
-        public float battery_voltage { get { return _battery_voltage; } set { if (_battery_voltage == 0) _battery_voltage = value; _battery_voltage = value * 0.2f + _battery_voltage * 0.8f; } }
+        public float battery_voltage { get { return _battery_voltage; } set { if (_battery_voltage == 0) _battery_voltage = value; _battery_voltage = value * 0.1f + _battery_voltage * 0.9f; } }
         private float _battery_voltage;
         [DisplayText("Bat Remaining (%)")]
-        public float battery_remaining { get { return _battery_remaining; } set { _battery_remaining = value; if (_battery_remaining < 0 || _battery_remaining > 100) _battery_remaining = 0; } }
-        private float _battery_remaining;
+        public int battery_remaining { get { return _battery_remaining; } set { _battery_remaining = value; if (_battery_remaining < 0 || _battery_remaining > 100) _battery_remaining = 0; } }
+        private int _battery_remaining;
         [DisplayText("Bat Current (Amps)")]
-        public float current { get { return _current; } set { if (value < 0) return; if (_lastcurrent == DateTime.MinValue) _lastcurrent = datetime; battery_usedmah += (value * 1000) * (float)(datetime - _lastcurrent).TotalHours; _current = value; _lastcurrent = datetime; } }
+        public float current { get { return _current; } set { if (value < 0) return; if (_lastcurrent == DateTime.MinValue) _lastcurrent = datetime; battery_usedmah += (float)((value * 1000.0) * (datetime - _lastcurrent).TotalHours); _current = value; _lastcurrent = datetime; } }
         private float _current;
         private DateTime _lastcurrent = DateTime.MinValue;
         [DisplayText("Bat used EST (mah)")]
@@ -399,7 +397,7 @@ namespace MissionPlanner
         public float sonarvoltage { get; set; }
 
         // current firmware
-        public MainV2.Firmwares firmware = MainV2.Firmwares.ArduPlane;
+        public MainV2.Firmwares firmware = MainV2.Firmwares.ArduCopter2;
         public float freemem { get; set; }
         public float load { get; set; }
         public float brklevel { get; set; }
@@ -460,7 +458,12 @@ namespace MissionPlanner
         // stats
         public ushort packetdropremote { get; set; }
         public ushort linkqualitygcs { get; set; }
+        [DisplayText("HW Voltage")]
         public float hwvoltage { get; set; }
+        [DisplayText("Board Voltage")]
+        public float boardvoltage { get; set; }
+        [DisplayText("Serov Rail Voltage")]
+        public float servovoltage { get; set; }
         public ushort i2cerrors { get; set; }
 
         // requested stream rates
@@ -588,11 +591,20 @@ namespace MissionPlanner
 
                     //check if valid mavinterface
                     if (mavinterface != null && mavinterface.packetsnotlost != 0)
-                        linkqualitygcs = (ushort)((mavinterface.packetsnotlost / (mavinterface.packetsnotlost + mavinterface.packetslost)) * 100.0);
-
-                    if (DateTime.Now.Second != lastsecondcounter.Second)
                     {
-                        lastsecondcounter = DateTime.Now;
+                        if ((DateTime.Now - mavinterface.lastvalidpacket).TotalSeconds > 10)
+                        {
+                            linkqualitygcs = 0;
+                        }
+                        else
+                        {
+                            linkqualitygcs = (ushort)((mavinterface.packetsnotlost / (mavinterface.packetsnotlost + mavinterface.packetslost)) * 100.0);
+                        }
+                    }
+
+                    if (datetime.Second != lastsecondcounter.Second)
+                    {
+                        lastsecondcounter = datetime;
 
                         if (lastpos.Lat != 0 && lastpos.Lng != 0 && armed)
                         {
@@ -613,48 +625,6 @@ namespace MissionPlanner
 
                         if (!gotwind)
                             dowindcalc();
-                    }
-
-                    if (mavinterface.MAV.packets[(byte)MAVLink.MAVLINK_MSG_ID.STATUSTEXT] != null) // status text 
-                    {
-
-                        var msg = mavinterface.MAV.packets[(byte)MAVLink.MAVLINK_MSG_ID.STATUSTEXT].ByteArrayToStructure<MAVLink.mavlink_statustext_t>(6);
-
-                        /*
-enum gcs_severity {
-    SEVERITY_LOW=1,
-    SEVERITY_MEDIUM,
-    SEVERITY_HIGH,
-    SEVERITY_CRITICAL
-};
-                         */
-
-                       byte sev = msg.severity;
-
-                        string logdata = Encoding.ASCII.GetString(mavinterface.MAV.packets[(byte)MAVLink.MAVLINK_MSG_ID.STATUSTEXT], 6, mavinterface.MAV.packets[(byte)MAVLink.MAVLINK_MSG_ID.STATUSTEXT].Length - 6);
-
-                        int ind = logdata.IndexOf('\0');
-                        if (ind != -1)
-                            logdata = logdata.Substring(0, ind);
-
-                        if (sev >= 3)
-                        {
-                            messageHigh = logdata;
-                            messageHighTime = DateTime.Now;
-                        }
-
-                        try
-                        {
-                            while (messages.Count > 50)
-                            {
-                                messages.RemoveAt(0);
-                            }
-                            messages.Add(logdata + "\n");
-
-                        }
-                        catch { }
-
-                        mavinterface.MAV.packets[(byte)MAVLink.MAVLINK_MSG_ID.STATUSTEXT] = null;
                     }
 
                     byte[] bytearray = mavinterface.MAV.packets[(byte)MAVLink.MAVLINK_MSG_ID.RC_CHANNELS_SCALED];
@@ -760,6 +730,16 @@ enum gcs_severity {
                         sonarvoltage = sonar.voltage;
                     }
 
+                    bytearray = mavinterface.MAV.packets[(byte)MAVLink.MAVLINK_MSG_ID.POWER_STATUS];
+                    if (bytearray != null)
+                    {
+                        var power = bytearray.ByteArrayToStructure<MAVLink.mavlink_power_status_t>(6);
+
+                        boardvoltage = power.Vcc;
+                        servovoltage = power.Vservo;
+                    }
+                    
+
                     bytearray = mavinterface.MAV.packets[(byte)MAVLink.MAVLINK_MSG_ID.WIND];
                     if (bytearray != null)
                     {
@@ -840,7 +820,7 @@ enum gcs_severity {
                         load = (float)sysstatus.load / 10.0f;
 
                         battery_voltage = (float)sysstatus.voltage_battery / 1000.0f;
-                        battery_remaining = (float)sysstatus.battery_remaining;
+                        battery_remaining = sysstatus.battery_remaining;
                         current = (float)sysstatus.current_battery / 100.0f;
 
                         packetdropremote = sysstatus.drop_rate_comm;
@@ -1098,7 +1078,7 @@ enum gcs_severity {
                         ch8in = rcin.chan8_raw;
 
                         //percent
-                        rxrssi = (float)((rcin.rssi / 255.0) * 100.0);
+                        rxrssi = (int)((rcin.rssi / 255.0) * 100.0);
 
                         //MAVLink.packets[(byte)MAVLink.MSG_NAMES.RC_CHANNELS_RAW] = null;
                     }
@@ -1369,12 +1349,16 @@ enum gcs_severity {
         }
 
 
+        /// <summary>
+        /// derived from MAV_SYS_STATUS_SENSOR
+        /// </summary>
         public class Mavlink_Sensors
         {
             BitArray bitArray = new BitArray(32);
 
             public Mavlink_Sensors()
             {
+                //var imte = MAVLink.MAV_SYS_STATUS_SENSOR._3D_ACCEL;
             }
 
             public Mavlink_Sensors(uint p)
@@ -1389,9 +1373,9 @@ enum gcs_severity {
             public bool differential_pressure { get { return bitArray[4]; } set { bitArray[4] = value; } }
             public bool gps { get { return bitArray[5]; } set { bitArray[5] = value; } }
             public bool optical_flow { get { return bitArray[6]; } set { bitArray[6] = value; } }
-            public bool unused_7 { get { return bitArray[7]; } set { bitArray[7] = value; } }
-            public bool unused_8 { get { return bitArray[8]; } set { bitArray[8] = value; } }
-            public bool unused_9 { get { return bitArray[9]; } set { bitArray[9] = value; } }
+            public bool VISION_POSITION { get { return bitArray[7]; } set { bitArray[7] = value; } }
+            public bool LASER_POSITION { get { return bitArray[8]; } set { bitArray[8] = value; } }
+            public bool GROUND_TRUTH { get { return bitArray[9]; } set { bitArray[9] = value; } }
             public bool rate_control { get { return bitArray[10]; } set { bitArray[10] = value; } }
             public bool attitude_stabilization { get { return bitArray[11]; } set { bitArray[11] = value; } }
             public bool yaw_position { get { return bitArray[12]; } set { bitArray[12] = value; } }
@@ -1399,6 +1383,9 @@ enum gcs_severity {
             public bool xy_position_control { get { return bitArray[14]; } set { bitArray[14] = value; } }
             public bool motor_control { get { return bitArray[15]; } set { bitArray[15] = value; } }
             public bool rc_receiver { get { return bitArray[16]; } set { bitArray[16] = value; } }
+            public bool gyro2 { get { return bitArray[17]; } set { bitArray[17] = value; } }
+            public bool accel2 { get { return bitArray[18]; } set { bitArray[18] = value; } }
+            public bool mag2 { get { return bitArray[19]; } set { bitArray[19] = value; } }
 
             public int Value
             {
