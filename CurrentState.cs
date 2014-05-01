@@ -719,19 +719,23 @@ namespace MissionPlanner
 
                         int beginning_of_week = DateTime.Now.Day - (int)DateTime.Now.DayOfWeek;
                         // TODO: Determine if this is the right way to set the time.... JW AIAA
-                        DateTime date1 = new DateTime(DateTime.Now.Year, DateTime.Now.Month, beginning_of_week, 0, 0, 0, DateTimeKind.Local);
-
-                        date1 = date1.AddMilliseconds(systime.time_unix_usec);
+                        DateTime date_local = new DateTime(DateTime.Now.Year, DateTime.Now.Month, beginning_of_week, 0, 0, 0, DateTimeKind.Local);
+                        DateTime date_utc = DateTime.SpecifyKind(date_local, DateTimeKind.Utc);
+                        date_utc = date_utc.AddMilliseconds(systime.time_unix_usec);
 
                         if (!isCameraTriggerEntry)
                         {
                             isCameraTriggerEntry = true;
 
-                            CamDBEntry.TimeStamp = date1;
+                            CamDBEntry.TimeStamp = date_utc;
                             CamDBEntry.PhotoCounter++;
                         }
+                        else
+                        {
+                            // Handle this somehow.. it shouldn't ever happen though
+                        }
 
-                        gpstime = date1;
+                        gpstime = date_utc;
 
                         mavinterface.MAV.packets[(byte)MAVLink.MAVLINK_MSG_ID.SYSTEM_TIME] = null;
                     }
@@ -1046,10 +1050,10 @@ namespace MissionPlanner
                             {
                                 int beginning_of_week = DateTime.Now.Day - (int)DateTime.Now.DayOfWeek;
                                 // TODO: Determine if this is the right way to set the time.... JW AIAA
-                                DateTime date1 = new DateTime(DateTime.Now.Year, DateTime.Now.Month, beginning_of_week, 0, 0, 0, DateTimeKind.Local);
-
-                                date1 = date1.AddMilliseconds(loc.time_boot_ms);
-                                CamDBEntry.TimeStamp = date1;
+                                DateTime date_local = new DateTime(DateTime.Now.Year, DateTime.Now.Month, beginning_of_week, 0, 0, 0, DateTimeKind.Local);
+                                DateTime date_utc = DateTime.SpecifyKind(date_local,DateTimeKind.Utc);
+                                date_utc = date_utc.AddMilliseconds(loc.time_boot_ms);
+                                CamDBEntry.TimeStamp = date_utc;
                                 isCameraTriggerEntry = false;
                             }
                             else
