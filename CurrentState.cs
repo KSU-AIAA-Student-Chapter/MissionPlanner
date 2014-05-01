@@ -15,6 +15,19 @@ using System.Data;
 
 namespace MissionPlanner
 {
+    public static class DateTimeExtensions
+    {
+        public static DateTime StartOfWeek(this DateTime dt, DayOfWeek startOfWeek)
+        {
+            int diff = dt.DayOfWeek - startOfWeek;
+            if (diff < 0)
+            {
+                diff += 7;
+            }
+
+            return dt.AddDays(-1 * diff).Date;
+        }
+    }
     public class CurrentState : ICloneable
     {
         private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
@@ -70,6 +83,13 @@ namespace MissionPlanner
                     );
             }
 
+            public void ResetBootTime(ref DateTime absolute_boot_time_utc, UInt64 time_unix_ms, UInt32 time_boot_ms)
+            {
+                DateTime date_local = DateTime.Now.StartOfWeek(DayOfWeek.Sunday);
+                absolute_boot_time_utc = DateTime.SpecifyKind(date_local, DateTimeKind.Utc);
+                absolute_boot_time_utc = absolute_boot_time_utc.AddMilliseconds(time_unix_ms - time_boot_ms);
+            }
+
         }
 
         public CameraTriggerDatabaseEntry CamDBEntry = new CameraTriggerDatabaseEntry();
@@ -77,6 +97,10 @@ namespace MissionPlanner
         public SqlConnection sqlConnection = null;
 
         public bool isCameraTriggerEntry = false;
+
+        public DateTime absolute_boot_time_utc;
+
+        public bool begin_logging = false;
 
         // orientation - rads
         [DisplayText("Roll (deg)")]
@@ -620,6 +644,9 @@ namespace MissionPlanner
                         if ((DateTime.Now - mavinterface.lastvalidpacket).TotalSeconds > 10)
                         {
                             linkqualitygcs = 0;
+                            // If we have lost a connection zero the boot time and start again
+                            begin_logging = false;
+                            absolute_boot_time_utc = DateTime.MinValue;
                         }
                         else
                         {
@@ -717,11 +744,16 @@ namespace MissionPlanner
                     {
                         var systime = bytearray.ByteArrayToStructure<MAVLink.mavlink_system_time_t>(6);
 
-                        int beginning_of_week = DateTime.Now.Day - (int)DateTime.Now.DayOfWeek;
-                        // TODO: Determine if this is the right way to set the time.... JW AIAA
-                        DateTime date_local = new DateTime(DateTime.Now.Year, DateTime.Now.Month, beginning_of_week, 0, 0, 0, DateTimeKind.Local);
-                        DateTime date_utc = DateTime.SpecifyKind(date_local, DateTimeKind.Utc);
-                        date_utc = date_utc.AddMilliseconds(systime.time_unix_usec);
+                        // If this is the first SystemTime message and we have a gps lock
+                        // initialize the absolute_boot_time_utc variable
+                        // Note that systime.time_unix_usec is actually in miliseconds
+                        if (absolute_boot_time_utc == DateTime.MinValue && systime.time_boot_ms != systime.time_unix_usec)
+                        {
+                            CamDBEntry.ResetBootTime(ref absolute_boot_time_utc, systime.time_unix_usec, systime.time_boot_ms);
+                            begin_logging = true;
+                        }
+
+                        DateTime date_utc = absolute_boot_time_utc.AddMilliseconds(systime.time_boot_ms);
 
                         if (!isCameraTriggerEntry)
                         {
@@ -952,7 +984,7 @@ namespace MissionPlanner
                             CamDBEntry.IsPhoto = true;
                         }
                         // Attempt to log telemetry
-                        TryLogTelemetry(ref CamDBEntry, sqlConnection);
+                        TryLogTelemetry(ref CamDBEntry, sqlConnection, begin_logging);
            
 
                         //                    Console.WriteLine(roll + " " + pitch + " " + yaw);
@@ -1041,18 +1073,14 @@ namespace MissionPlanner
                             lng = loc.lon / 10000000.0f;
 
                             altasl = loc.alt / 1000.0f;
-
+                            // Maybe should use loc.relativealt instead because this will change depending on what we are displaying
                             CamDBEntry.Latitude = lat;
                             CamDBEntry.Longitude = lng;
-                            CamDBEntry.Altitude = altasl;
+                            CamDBEntry.Altitude = alt;
 
                             if (!isCameraTriggerEntry)
                             {
-                                int beginning_of_week = DateTime.Now.Day - (int)DateTime.Now.DayOfWeek;
-                                // TODO: Determine if this is the right way to set the time.... JW AIAA
-                                DateTime date_local = new DateTime(DateTime.Now.Year, DateTime.Now.Month, beginning_of_week, 0, 0, 0, DateTimeKind.Local);
-                                DateTime date_utc = DateTime.SpecifyKind(date_local,DateTimeKind.Utc);
-                                date_utc = date_utc.AddMilliseconds(loc.time_boot_ms);
+                                DateTime date_utc = absolute_boot_time_utc.AddMilliseconds(loc.time_boot_ms);
                                 CamDBEntry.TimeStamp = date_utc;
                                 isCameraTriggerEntry = false;
                             }
@@ -1062,7 +1090,7 @@ namespace MissionPlanner
                             }
 
                             // Attempt to log telemetry
-                            TryLogTelemetry(ref CamDBEntry, sqlConnection);
+                            TryLogTelemetry(ref CamDBEntry, sqlConnection, begin_logging);
                         }
                     }
 
@@ -1339,9 +1367,9 @@ namespace MissionPlanner
         }
 
 
-        public static void TryLogTelemetry(ref CameraTriggerDatabaseEntry DBEntry, SqlConnection sqlConnection)
+        public static void TryLogTelemetry(ref CameraTriggerDatabaseEntry DBEntry, SqlConnection sqlConnection, bool begin_logging)
         {
-            if (DBEntry.IsValidTelemetry())
+            if (DBEntry.IsValidTelemetry() && begin_logging)
             {
                 System.Diagnostics.Debug.Assert(sqlConnection != null, "sqlConnection == null");
                 System.Diagnostics.Debug.Assert(sqlConnection.State == ConnectionState.Open, "sqlConnection.State != ConnectionState.Open");
