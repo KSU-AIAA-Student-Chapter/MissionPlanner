@@ -41,15 +41,40 @@ namespace MissionPlanner
             public float Pitch { get; set; }
             public float Roll { get; set; }
             public int PhotoCounter { get; set; }
+            public bool IsPhoto { get; set; }
+
+            public void Clear()
+            {
+                ID = 0;
+                TimeStamp = DateTime.MinValue;
+                Latitude = float.MinValue;
+                Longitude = float.MinValue;
+                Altitude = float.MinValue;
+                Azimuth = float.MinValue;
+                Pitch = float.MinValue;
+                Roll = float.MinValue;
+                //PhotoCounter = 0;
+                IsPhoto = false;
+            }
+
+            public bool IsValidTelemetry()
+            {
+                return (
+                    (TimeStamp != DateTime.MinValue)
+                    && (Latitude != float.MinValue)
+                    && (Longitude != float.MinValue)
+                    && (Altitude != float.MinValue)
+                    && (Azimuth != float.MinValue)
+                    && (Pitch != float.MinValue)
+                    && (Roll != float.MinValue)
+                    );
+            }
+
         }
 
         public CameraTriggerDatabaseEntry CamDBEntry = new CameraTriggerDatabaseEntry();
 
-        public Queue<CameraTriggerDatabaseEntry> CameraQueue = new Queue<CameraTriggerDatabaseEntry>();
-
-        public SqlConnection sqlConnection = OpenAVUSI();
-
-        public bool dBEntryStarted = false;
+        public SqlConnection sqlConnection = null;
 
         public bool isCameraTriggerEntry = false;
 
@@ -508,7 +533,7 @@ namespace MissionPlanner
         public CurrentState()
         {
             ResetInternals();
-
+            sqlConnection = OpenAVUSI();
             var t = Type.GetType("Mono.Runtime");
             MONO = (t != null);
         }
@@ -692,9 +717,11 @@ namespace MissionPlanner
                     {
                         var systime = bytearray.ByteArrayToStructure<MAVLink.mavlink_system_time_t>(6);
 
-                        DateTime date1 = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                        int beginning_of_week = DateTime.Now.Day - (int)DateTime.Now.DayOfWeek;
+                        // TODO: Determine if this is the right way to set the time.... JW AIAA
+                        DateTime date1 = new DateTime(DateTime.Now.Year, DateTime.Now.Month, beginning_of_week, 0, 0, 0, DateTimeKind.Local);
 
-                        date1 = date1.AddMilliseconds(systime.time_unix_usec / 1000);
+                        date1 = date1.AddMilliseconds(systime.time_unix_usec);
 
                         if (!isCameraTriggerEntry)
                         {
@@ -918,9 +945,10 @@ namespace MissionPlanner
                         if(isCameraTriggerEntry)
                         {
                             isCameraTriggerEntry = false;
+                            CamDBEntry.IsPhoto = true;
                         }
                         // Attempt to log telemetry
-                        TryLogTelemetry(ref dBEntryStarted, CamDBEntry, sqlConnection, CameraQueue);
+                        TryLogTelemetry(ref CamDBEntry, sqlConnection);
            
 
                         //                    Console.WriteLine(roll + " " + pitch + " " + yaw);
@@ -940,22 +968,6 @@ namespace MissionPlanner
                             altasl = gps.alt / 1000.0f;
                            // alt = gps.alt; // using vfr as includes baro calc
 
-                            CamDBEntry.Latitude = lat;
-                            CamDBEntry.Longitude = lng;
-                            CamDBEntry.Altitude = altasl;
-
-                            if(!isCameraTriggerEntry)
-                            {
-                                // TODO: Determine if this is the right way to set the time.... JW AIAA
-                                DateTime date1 = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
-                                date1 = date1.AddMilliseconds(gps.time_usec / 1000);
-                                CamDBEntry.TimeStamp = date1;
-                                isCameraTriggerEntry = false;
-                            }
-
-                            // Attempt to log telemetry
-                            TryLogTelemetry(ref dBEntryStarted, CamDBEntry, sqlConnection, CameraQueue);
                         }
 
                         gpsstatus = gps.fix_type;
@@ -1025,6 +1037,28 @@ namespace MissionPlanner
                             lng = loc.lon / 10000000.0f;
 
                             altasl = loc.alt / 1000.0f;
+
+                            CamDBEntry.Latitude = lat;
+                            CamDBEntry.Longitude = lng;
+                            CamDBEntry.Altitude = altasl;
+
+                            if (!isCameraTriggerEntry)
+                            {
+                                int beginning_of_week = DateTime.Now.Day - (int)DateTime.Now.DayOfWeek;
+                                // TODO: Determine if this is the right way to set the time.... JW AIAA
+                                DateTime date1 = new DateTime(DateTime.Now.Year, DateTime.Now.Month, beginning_of_week, 0, 0, 0, DateTimeKind.Local);
+
+                                date1 = date1.AddMilliseconds(loc.time_boot_ms);
+                                CamDBEntry.TimeStamp = date1;
+                                isCameraTriggerEntry = false;
+                            }
+                            else
+                            {
+                                CamDBEntry.IsPhoto = true;
+                            }
+
+                            // Attempt to log telemetry
+                            TryLogTelemetry(ref CamDBEntry, sqlConnection);
                         }
                     }
 
@@ -1267,40 +1301,44 @@ namespace MissionPlanner
 
         public static SqlConnection OpenAVUSI()
         {
-            SqlConnectionStringBuilder sqlConnectionStringBuilder
-                = new SqlConnectionStringBuilder();
- 
-            sqlConnectionStringBuilder.DataSource = "localhost";                     //use the IP address of the AUVSI laptop
-            sqlConnectionStringBuilder.InitialCatalog = "AVUSI";                         //this is the database name
-            sqlConnectionStringBuilder.IntegratedSecurity = true;                      //probably will set to false and user a UID and PWD later
-            sqlConnectionStringBuilder.MinPoolSize = 5;
-            sqlConnectionStringBuilder.MaxPoolSize = 2000;
-            sqlConnectionStringBuilder.Pooling = true;
-            sqlConnectionStringBuilder.ConnectTimeout = 5;                  //added to solve timeout problem
- 
-            SqlConnection sqlConnection
-                = new SqlConnection(sqlConnectionStringBuilder.ConnectionString);
- 
+            SqlConnection sqlConnection = null;
             try
             {
+                SqlConnectionStringBuilder sqlConnectionStringBuilder
+                = new SqlConnectionStringBuilder();
+
+                //Data Source=AUVSI-PC;Initial Catalog=AUVSI;Persist Security Info=True;User ID=sa;Password=***********
+
+
+                sqlConnectionStringBuilder.DataSource = "localhost";                     //use the IP address of the AUVSI laptop
+                sqlConnectionStringBuilder.InitialCatalog = "AUVSI";                         //this is the database name
+                sqlConnectionStringBuilder.PersistSecurityInfo = true;
+                sqlConnectionStringBuilder.IntegratedSecurity = true;                      //probably will set to false and user a UID and PWD later
+                sqlConnectionStringBuilder.MinPoolSize = 5;
+                sqlConnectionStringBuilder.MaxPoolSize = 2000;
+                sqlConnectionStringBuilder.Pooling = true;
+                sqlConnectionStringBuilder.ConnectTimeout = 5;                  //added to solve timeout problem
+
+                sqlConnection
+                    = new SqlConnection(sqlConnectionStringBuilder.ConnectionString);
+
                 sqlConnection.Open();
             }
-            catch (InvalidOperationException ex)
+            catch (Exception ex)
             {
-                System.Diagnostics.Debug.Print("OpenAVUSI(): ", ex.Message);
+                CustomMessageBox.Show("OpenAVUSI(): " + ex.Message);
+                System.Diagnostics.Debug.Print("OpenAVUSI(): " + ex.Message);
             }
             System.Diagnostics.Debug.Assert(sqlConnection.State == ConnectionState.Open);
- 
+
             return sqlConnection;
         }
 
 
-        public static void TryLogTelemetry(ref bool dBEntryStarted, CameraTriggerDatabaseEntry DBEntry, SqlConnection sqlConnection, Queue<CameraTriggerDatabaseEntry> CameraQueue)
+        public static void TryLogTelemetry(ref CameraTriggerDatabaseEntry DBEntry, SqlConnection sqlConnection)
         {
-            if (dBEntryStarted)
+            if (DBEntry.IsValidTelemetry())
             {
-                dBEntryStarted = false;
-
                 System.Diagnostics.Debug.Assert(sqlConnection != null, "sqlConnection == null");
                 System.Diagnostics.Debug.Assert(sqlConnection.State == ConnectionState.Open, "sqlConnection.State != ConnectionState.Open");
 
@@ -1309,7 +1347,7 @@ namespace MissionPlanner
                     try
                     {
                         SqlCommand command = new SqlCommand(
-                            "INSERT INTO FlightTelemetry (Timestamp, Latitude, Longitutde, Altitude, Azimuth, Pitch, Roll, PhotoCounter) VALUES (" +
+                            "INSERT INTO FlightTelemetry (Timestamp, Latitude, Longitude, Altitude, Azimuth, Pitch, Roll, PhotoCounter, IsPhoto) VALUES (" +
                              "@timestamp, " +
                              "@latitude," +
                              "@longitude, " +
@@ -1317,7 +1355,8 @@ namespace MissionPlanner
                              "@azimuth, " +
                              "@pitch, " +
                              "@roll, " +
-                             "@photocounter); ", sqlConnection);
+                             "@photocounter, " +
+                             "@isphoto ); ", sqlConnection);
 
                         command.Parameters.AddWithValue("@timestamp", DBEntry.TimeStamp);
                         command.Parameters.AddWithValue("@latitude ", DBEntry.Latitude);
@@ -1327,8 +1366,11 @@ namespace MissionPlanner
                         command.Parameters.AddWithValue("@pitch ", DBEntry.Pitch);
                         command.Parameters.AddWithValue("@roll ", DBEntry.Roll);
                         command.Parameters.AddWithValue("@photocounter ", DBEntry.PhotoCounter);
+                        command.Parameters.AddWithValue("@isphoto ", DBEntry.IsPhoto);
 
                         command.ExecuteNonQuery();
+
+                        DBEntry.Clear();
 
                     }
                     catch (Exception ex)
@@ -1336,16 +1378,7 @@ namespace MissionPlanner
                         System.Diagnostics.Debug.Print("LogTelemetry (): " + ex.Message);
                     }
                 }
-                else 
-                {
-                    CameraQueue.Enqueue(DBEntry);
-                }
             }
-            else
-            {
-                dBEntryStarted = true;
-            }
- 
         }
 
 
