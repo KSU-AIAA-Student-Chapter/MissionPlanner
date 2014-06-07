@@ -72,7 +72,12 @@ namespace MissionPlanner.Log
                 {
                     genchkcombo(item.id);
 
-                    TXT_seriallog.AppendText(item.id + " " + new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddSeconds(item.time_utc).ToLocalTime() + " est size: " + item.size +"\n");
+                    TXT_seriallog.AppendText(item.id + "\t" + new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddSeconds(item.time_utc).ToLocalTime() + "\test size:\t" + item.size +"\r\n");
+                }
+
+                if (list.Count == 0)
+                {
+                    TXT_seriallog.AppendText("No logs to download");
                 }
             }
             catch { CustomMessageBox.Show("Cannot get log list.","Error"); this.Close(); }
@@ -299,15 +304,18 @@ namespace MissionPlanner.Log
 
         private void BUT_clearlogs_Click(object sender, EventArgs e)
         {
-            try
+            if (CustomMessageBox.Show("Are you sure?", "sure", MessageBoxButtons.YesNo) == System.Windows.Forms.DialogResult.Yes)
             {
-                MainV2.comPort.EraseLog();
-                TXT_seriallog.AppendText("!!Allow 30-90 seconds for erase\n");
-                status = serialstatus.Done;
-                updateDisplay();
-                CHK_logs.Items.Clear();
+                try
+                {
+                    MainV2.comPort.EraseLog();
+                    TXT_seriallog.AppendText("!!Allow 30-90 seconds for erase\n");
+                    status = serialstatus.Done;
+                    updateDisplay();
+                    CHK_logs.Items.Clear();
+                }
+                catch (Exception ex) { CustomMessageBox.Show(ex.Message, "Error"); }
             }
-            catch (Exception ex) { CustomMessageBox.Show(ex.Message, "Error"); }
         }
 
         private void BUT_redokml_Click(object sender, EventArgs e)

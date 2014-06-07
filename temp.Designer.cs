@@ -68,7 +68,9 @@
             this.but_loganalysis = new MissionPlanner.Controls.MyButton();
             this.BUT_magfit = new MissionPlanner.Controls.MyButton();
             this.but_mavserialport = new MissionPlanner.Controls.MyButton();
-			this.button3 = new System.Windows.Forms.Button();
+            this.button3 = new System.Windows.Forms.Button();
+            this.BUT_magfit2 = new MissionPlanner.Controls.MyButton();
+            this.BUT_shptopoly = new MissionPlanner.Controls.MyButton();
             this.SuspendLayout();
             // 
             // label1
@@ -432,7 +434,7 @@
             // 
             // BUT_magfit
             // 
-            this.BUT_magfit.Location = new System.Drawing.Point(461, 287);
+            this.BUT_magfit.Location = new System.Drawing.Point(389, 287);
             this.BUT_magfit.Name = "BUT_magfit";
             this.BUT_magfit.Size = new System.Drawing.Size(75, 23);
             this.BUT_magfit.TabIndex = 43;
@@ -449,7 +451,8 @@
             this.but_mavserialport.Text = "MAVSerial pass";
             this.but_mavserialport.UseVisualStyleBackColor = true;
             this.but_mavserialport.Click += new System.EventHandler(this.but_mavserialport_Click);
-			            // button3
+            // 
+            // button3
             // 
             this.button3.Location = new System.Drawing.Point(429, 338);
             this.button3.Name = "button3";
@@ -459,12 +462,34 @@
             this.button3.UseVisualStyleBackColor = true;
             this.button3.Click += new System.EventHandler(this.button3_Click);
             // 
+            // BUT_magfit2
+            // 
+            this.BUT_magfit2.Location = new System.Drawing.Point(470, 287);
+            this.BUT_magfit2.Name = "BUT_magfit2";
+            this.BUT_magfit2.Size = new System.Drawing.Size(75, 23);
+            this.BUT_magfit2.TabIndex = 45;
+            this.BUT_magfit2.Text = "magfit2";
+            this.BUT_magfit2.UseVisualStyleBackColor = true;
+            this.BUT_magfit2.Click += new System.EventHandler(this.BUT_magfit2_Click);
+            // 
+            // BUT_shptopoly
+            // 
+            this.BUT_shptopoly.Location = new System.Drawing.Point(592, 132);
+            this.BUT_shptopoly.Name = "BUT_shptopoly";
+            this.BUT_shptopoly.Size = new System.Drawing.Size(75, 23);
+            this.BUT_shptopoly.TabIndex = 46;
+            this.BUT_shptopoly.Text = "Shp to Poly";
+            this.BUT_shptopoly.UseVisualStyleBackColor = true;
+            this.BUT_shptopoly.Click += new System.EventHandler(this.BUT_shptopoly_Click);
+            // 
             // temp
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(685, 450);
-			  this.Controls.Add(this.button3);
+            this.Controls.Add(this.BUT_shptopoly);
+            this.Controls.Add(this.BUT_magfit2);
+            this.Controls.Add(this.button3);
             this.Controls.Add(this.but_mavserialport);
             this.Controls.Add(this.BUT_magfit);
             this.Controls.Add(this.but_loganalysis);
@@ -553,5 +578,7 @@
         private Controls.MyButton BUT_magfit;
         private Controls.MyButton but_mavserialport;
         System.Windows.Forms.Button button3;
+        private Controls.MyButton BUT_magfit2;
+        private Controls.MyButton BUT_shptopoly;
     }
 }

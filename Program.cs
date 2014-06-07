@@ -104,6 +104,12 @@ namespace MissionPlanner
             //adsb.serverport = 31001;
             //adsb.serverport = 30003;
 
+            //Utilities.Airports.ReadUNLOCODE(@"C:\Users\hog\Desktop\2013-2 UNLOCODE CodeListPart1.csv");
+            //Utilities.Airports.ReadUNLOCODE(@"C:\Users\hog\Desktop\2013-2 UNLOCODE CodeListPart2.csv");
+            //Utilities.Airports.ReadUNLOCODE(@"C:\Users\hog\Desktop\2013-2 UNLOCODE CodeListPart3.csv");
+            //Utilities.Airports.ReadPartow(@"C:\Users\hog\Desktop\GlobalAirportDatabase.txt");
+
+
             /*
             Arduino.ArduinoSTKv2 comport = new Arduino.ArduinoSTKv2();
 

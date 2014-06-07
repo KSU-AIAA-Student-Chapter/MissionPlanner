@@ -23,6 +23,7 @@ using System.Xml;
 using IronPython.Hosting;
 using IronPython.Runtime.Operations;
 using System.Net.Sockets;
+using DotSpatial.Projections;
 
 namespace MissionPlanner
 {
@@ -955,7 +956,19 @@ namespace MissionPlanner
 
         private void BUT_magfit_Click(object sender, EventArgs e)
         {
-            MagCalib.ProcessLog(0);
+            OpenFileDialog ofd = new OpenFileDialog();
+            ofd.Filter = "t Log|*.tlog";
+
+            ofd.ShowDialog();
+
+            var com = new Comms.CommsFile();
+            com.Open(ofd.FileName);
+
+            MainV2.comPort.BaseStream = com;
+
+            MagCalib.DoGUIMagCalib();
+
+            //MagCalib.ProcessLog(0);
         }
 
         private void but_multimav_Click(object sender, EventArgs e)
@@ -1141,6 +1154,16 @@ namespace MissionPlanner
                         xmlwriter.WriteElementString("urlpx4", new Uri(software.urlpx4v1).LocalPath.TrimStart('/', '\\'));
                     if (software.urlpx4v2 != "")
                         xmlwriter.WriteElementString("urlpx4v2", new Uri(software.urlpx4v2).LocalPath.TrimStart('/', '\\'));
+                    if (software.urlvrbrainv40 != "")
+                        xmlwriter.WriteElementString("urlvrbrainv40", new Uri(software.urlvrbrainv40).LocalPath.TrimStart('/', '\\'));
+                    if (software.urlvrbrainv45 != "")
+                        xmlwriter.WriteElementString("urlvrbrainv45", new Uri(software.urlvrbrainv45).LocalPath.TrimStart('/', '\\'));
+                    if (software.urlvrbrainv50 != "")
+                        xmlwriter.WriteElementString("urlvrbrainv50", new Uri(software.urlvrbrainv50).LocalPath.TrimStart('/', '\\'));
+                    if (software.urlvrbrainv51 != "")
+                        xmlwriter.WriteElementString("urlvrbrainv51", new Uri(software.urlvrbrainv51).LocalPath.TrimStart('/', '\\'));
+                    if (software.urlvrherov10 != "")
+                        xmlwriter.WriteElementString("urlvrherov10", new Uri(software.urlvrherov10).LocalPath.TrimStart('/', '\\'));
                     xmlwriter.WriteElementString("name", software.name);
                     xmlwriter.WriteElementString("desc", software.desc);
                     xmlwriter.WriteElementString("format_version", software.k_format_version.ToString());
@@ -1166,6 +1189,26 @@ namespace MissionPlanner
                     if (software.urlpx4v2 != "")
                     {
                         Common.getFilefromNet(software.urlpx4v2, basedir + new Uri(software.urlpx4v2).LocalPath);
+                    }
+                    if (software.urlvrbrainv40 != "")
+                    {
+                        Common.getFilefromNet(software.urlvrbrainv40, basedir + new Uri(software.urlvrbrainv40).LocalPath);
+                    }
+                    if (software.urlvrbrainv45 != "")
+                    {
+                        Common.getFilefromNet(software.urlvrbrainv45, basedir + new Uri(software.urlvrbrainv45).LocalPath);
+                    }
+                    if (software.urlvrbrainv50 != "")
+                    {
+                        Common.getFilefromNet(software.urlvrbrainv50, basedir + new Uri(software.urlvrbrainv50).LocalPath);
+                    }
+                    if (software.urlvrbrainv51 != "")
+                    {
+                        Common.getFilefromNet(software.urlvrbrainv51, basedir + new Uri(software.urlvrbrainv51).LocalPath);
+                    }
+                    if (software.urlvrherov10 != "")
+                    {
+                        Common.getFilefromNet(software.urlvrherov10, basedir + new Uri(software.urlvrherov10).LocalPath);
                     }
                 }
 
@@ -1269,6 +1312,87 @@ namespace MissionPlanner
                     }
 
                    // System.Threading.Thread.Sleep(1);
+                }
+            }
+        }
+
+        private void BUT_magfit2_Click(object sender, EventArgs e)
+        {
+            MagCalib.ProcessLog(0);
+        }
+
+        private void BUT_shptopoly_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog fd = new OpenFileDialog();
+            fd.Filter = "Shape file|*.shp";
+            DialogResult result = fd.ShowDialog();
+            string file = fd.FileName;
+
+            ProjectionInfo pStart = new ProjectionInfo();
+            ProjectionInfo pESRIEnd = KnownCoordinateSystems.Geographic.World.WGS1984;
+            bool reproject = false;
+
+            if (File.Exists(file))
+            {
+                string prjfile = Path.GetDirectoryName(file) + Path.DirectorySeparatorChar + Path.GetFileNameWithoutExtension(file) + ".prj";
+                if (File.Exists(prjfile))
+                {
+
+                    using (StreamReader re = File.OpenText(Path.GetDirectoryName(file) + Path.DirectorySeparatorChar + Path.GetFileNameWithoutExtension(file) + ".prj"))
+                    {
+                        pStart.ParseEsriString(re.ReadLine());
+
+                        reproject = true;
+                    }
+                }
+
+                DotSpatial.Data.IFeatureSet fs = DotSpatial.Data.FeatureSet.Open(file);
+
+                fs.FillAttributes();
+
+                int rows = fs.NumRows();
+
+                DataTable dtOriginal = fs.DataTable;
+                for (int row = 0; row < dtOriginal.Rows.Count; row++)
+                {
+                    object[] original = dtOriginal.Rows[row].ItemArray;
+                }
+
+                foreach (DataColumn col in dtOriginal.Columns)
+                {
+                    Console.WriteLine(col.ColumnName + " " + col.DataType.ToString());
+                }
+
+                int a = 1;
+
+                string path = Path.GetDirectoryName(file);
+
+                foreach (var feature in fs.Features)
+                {
+                    StringBuilder sb = new StringBuilder();
+
+                    sb.Append("#Shap to Poly - Mission Planner\r\n");
+                    foreach (var point in feature.Coordinates)
+                    {
+                        if (reproject)
+                        {
+                            double[] xyarray = { point.X, point.Y };
+                            double[] zarray = { point.Z };
+
+                            Reproject.ReprojectPoints(xyarray, zarray, pStart, pESRIEnd, 0, 1);
+
+                            point.X = xyarray[0];
+                            point.Y = xyarray[1];
+                            point.Z = zarray[0];
+                        }
+
+                        sb.Append(point.Y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\t" + point.X.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n");
+                    }
+
+                    log.Info("writting poly to " + path + Path.DirectorySeparatorChar + "poly-" + a + ".poly");
+                    File.WriteAllText(path + Path.DirectorySeparatorChar + "poly-" + a + ".poly", sb.ToString());
+
+                    a++;
                 }
             }
         }

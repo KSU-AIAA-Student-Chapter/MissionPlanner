@@ -44,12 +44,15 @@ namespace MissionPlanner.GCSViews
         bool sethome = false;
         bool polygongridmode = false;
         Hashtable param = new Hashtable();
+        bool splinemode = false;
 
         bool grid = false;
 
         public static FlightPlanner instance = null;
 
         public List<PointLatLngAlt> pointlist = new List<PointLatLngAlt>(); // used to calc distance
+        public List<PointLatLngAlt> fullpointlist = new List<PointLatLngAlt>();
+        public GMapRoute route = new GMapRoute("wp route");
         static public Object thisLock = new Object();
         private ComponentResourceManager rm = new ComponentResourceManager(typeof(FlightPlanner));
 
@@ -242,13 +245,20 @@ namespace MissionPlanner.GCSViews
             
             try
             {
-                double lastdist = MainMap.MapProvider.Projection.GetDistance(pointlist[pointlist.Count - 1], currentMarker.Position);
+                PointLatLng last;
+
+                if (pointlist[pointlist.Count - 1] == null)
+                    last = pointlist[pointlist.Count - 2];
+                else
+                    last = pointlist[pointlist.Count - 1];
+
+                double lastdist = MainMap.MapProvider.Projection.GetDistance(last, currentMarker.Position);
 
                 double lastbearing = 0;
 
                 if (pointlist.Count > 0)
                 {
-                    lastbearing = MainMap.MapProvider.Projection.GetBearing(pointlist[pointlist.Count - 1], currentMarker.Position);
+                    lastbearing = MainMap.MapProvider.Projection.GetBearing(last, currentMarker.Position);
                 }
 
                 lbl_prevdist.Text = rm.GetString("lbl_prevdist.Text") + ": " + FormatDistance(lastdist, true) + " AZ: " + lastbearing.ToString("0");
@@ -284,8 +294,17 @@ namespace MissionPlanner.GCSViews
             // creating a WP
 
             selectedrow = Commands.Rows.Add();
-            //   Commands.CurrentCell = Commands.Rows[selectedrow].Cells[Param1.Index];
-            ChangeColumnHeader(MAVLink.MAV_CMD.WAYPOINT.ToString());
+
+            if (splinemode)
+            {
+                Commands.Rows[selectedrow].Cells[Command.Index].Value = MAVLink.MAV_CMD.SPLINE_WAYPOINT.ToString();
+                ChangeColumnHeader(MAVLink.MAV_CMD.SPLINE_WAYPOINT.ToString());
+            }
+            else
+            {
+                Commands.Rows[selectedrow].Cells[Command.Index].Value = MAVLink.MAV_CMD.WAYPOINT.ToString();
+                ChangeColumnHeader(MAVLink.MAV_CMD.WAYPOINT.ToString());
+            }
 
             setfromMap(lat, lng, alt);
         }
@@ -371,6 +390,9 @@ namespace MissionPlanner.GCSViews
 
             polygonsoverlay = new GMapOverlay("polygons");
             MainMap.Overlays.Add(polygonsoverlay);
+
+            airportsoverlay = new GMapOverlay("airports");
+            MainMap.Overlays.Add(airportsoverlay);
 
             objectsoverlay = new GMapOverlay("objects");
             MainMap.Overlays.Add(objectsoverlay);
@@ -599,6 +621,12 @@ namespace MissionPlanner.GCSViews
             writeKML();
 
             panelWaypoints.Expand = false;
+
+            // switch the action and wp table
+            if (MainV2.getConfig("FP_docking") == "Bottom")
+            {
+                switchDockingToolStripMenuItem_Click(null, null);
+            }
 
             timer1.Start();
         }
@@ -898,7 +926,7 @@ namespace MissionPlanner.GCSViews
             // this is to share the current mission with the data tab
             pointlist = new List<PointLatLngAlt>();
 
-            List<PointLatLngAlt> fullpointlist = new List<PointLatLngAlt>();
+            fullpointlist.Clear();
 
             System.Diagnostics.Debug.WriteLine(DateTime.Now);
             try
@@ -1134,7 +1162,9 @@ namespace MissionPlanner.GCSViews
 
         private void RegenerateWPRoute(List<PointLatLngAlt> fullpointlist)
         {
-            GMapRoute route = new GMapRoute("wp route");
+            
+
+            route.Clear();
 
             polygonsoverlay.Routes.Clear();
 
@@ -2099,7 +2129,7 @@ namespace MissionPlanner.GCSViews
                     if (line.StartsWith("#"))
                         continue;
 
-                    string[] items = line.Split(new char[] { (char)'\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    string[] items = line.Split(new char[] { (char)'\t', ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
 
                     if (items.Length <= 9)
                         continue;
@@ -2235,6 +2265,7 @@ namespace MissionPlanner.GCSViews
         public static GMapOverlay objectsoverlay; // where the markers a drawn
         public static GMapOverlay routesoverlay;// static so can update from gcs
         public static GMapOverlay polygonsoverlay; // where the track is drawn
+        public static GMapOverlay airportsoverlay; 
         public static GMapOverlay poioverlay = new GMapOverlay("POI"); // poi layer
         GMapOverlay drawnpolygonsoverlay;
         GMapOverlay kmlpolygonsoverlay;
@@ -2305,6 +2336,11 @@ namespace MissionPlanner.GCSViews
                 if (item is GMapMarkerRallyPt)
                 {
                     CurrentRallyPt = item as GMapMarkerRallyPt;
+                }
+                if (item is GMapMarkerAirport)
+                {
+                    // do nothing - readonly
+                    return;
                 }
                 if (item is GMapMarker)
                 {
@@ -2722,6 +2758,16 @@ namespace MissionPlanner.GCSViews
 
             coords1.Lat = point.Lat;
             coords1.Lng = point.Lng;
+
+            // always show on planner view
+            //if (MainV2.ShowAirports)
+            {
+                airportsoverlay.Clear();
+                foreach (var item in Utilities.Airports.getAirports(MainMap.Position))
+                {
+                    airportsoverlay.Markers.Add(new GMapMarkerAirport(item) { ToolTipText = item.Tag, ToolTipMode = MarkerTooltipMode.OnMouseOver });
+                }
+            }
         }
 
         // center markers on start
@@ -5129,7 +5175,7 @@ namespace MissionPlanner.GCSViews
 
         private void insertWpToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            string wpno = "1";
+            string wpno = (selectedrow + 1).ToString("0");
             if (InputBox.Show("Insert WP", "Insert WP after wp#", ref wpno) == DialogResult.OK)
             {
                 try
@@ -5169,7 +5215,7 @@ namespace MissionPlanner.GCSViews
                 try
                 {
                     PointLatLngAlt plla = MainV2.comPort.getRallyPoint(a, ref count);
-                    rallypointoverlay.Markers.Add(new GMapMarkerRallyPt(new PointLatLng(plla.Lat, plla.Lng)) { Alt = (int)plla.Alt, ToolTipMode = MarkerTooltipMode.OnMouseOver, ToolTipText = "Rally Point" + "\nAlt: " + (plla.Alt / MainV2.comPort.MAV.cs.multiplierdist) });
+                    rallypointoverlay.Markers.Add(new GMapMarkerRallyPt(new PointLatLng(plla.Lat, plla.Lng)) { Alt = (int)plla.Alt, ToolTipMode = MarkerTooltipMode.OnMouseOver, ToolTipText = "Rally Point" + "\nAlt: " + (plla.Alt * MainV2.comPort.MAV.cs.multiplierdist) });
                 }
                 catch { CustomMessageBox.Show("Failed to get rally point", "Error"); return; }
             }
@@ -5207,7 +5253,7 @@ namespace MissionPlanner.GCSViews
 
             if (int.TryParse(altstring, out alt))
             {
-                PointLatLngAlt rallypt = new PointLatLngAlt(MouseDownStart.Lat, MouseDownStart.Lng, alt * MainV2.comPort.MAV.cs.multiplierdist, "Rally Point");
+                PointLatLngAlt rallypt = new PointLatLngAlt(MouseDownStart.Lat, MouseDownStart.Lng, alt / MainV2.comPort.MAV.cs.multiplierdist, "Rally Point");
                 rallypointoverlay.Markers.Add(
                         new GMapMarkerRallyPt(rallypt)
                         {
@@ -5672,11 +5718,50 @@ Column 1: Field type (RALLY is the only one at the moment -- may have RALLY_LAND
 
         private void switchDockingToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            panelAction.Dock = DockStyle.Bottom;
-            panelAction.Height = 120;
-            panelWaypoints.Dock = DockStyle.Right;
-            panelWaypoints.Width = this.Width / 2;
+            if (panelAction.Dock == DockStyle.Bottom)
+            {
+                panelAction.Dock = DockStyle.Right;
+                panelWaypoints.Dock = DockStyle.Bottom;
+            }
+            else
+            {
+                panelAction.Dock = DockStyle.Bottom;
+                panelAction.Height = 120;
+                panelWaypoints.Dock = DockStyle.Right;
+                panelWaypoints.Width = this.Width / 2;
+            }
 
+            MainV2.config["FP_docking"] = panelAction.Dock;
+        }
+
+        private void insertSplineWPToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            string wpno = (selectedrow+1).ToString("0");
+            if (InputBox.Show("Insert WP", "Insert WP after wp#", ref wpno) == DialogResult.OK)
+            {
+                try
+                {
+                    Commands.Rows.Insert(int.Parse(wpno), 1);
+                }
+                catch { CustomMessageBox.Show("Invalid insert position", "Error"); return; }
+
+                selectedrow = int.Parse(wpno);
+
+                try
+                {
+                    Commands.Rows[selectedrow].Cells[Command.Index].Value = MAVLink.MAV_CMD.SPLINE_WAYPOINT.ToString();
+                }
+                catch { CustomMessageBox.Show("SPLINE_WAYPOINT command not supported."); Commands.Rows.RemoveAt(selectedrow); return; }
+
+                ChangeColumnHeader(MAVLink.MAV_CMD.SPLINE_WAYPOINT.ToString());
+
+                setfromMap(MouseDownStart.Lat, MouseDownStart.Lng, (int)float.Parse(TXT_DefaultAlt.Text));
+            }
+        }
+
+        private void CHK_splinedefault_CheckedChanged(object sender, EventArgs e)
+        {
+            splinemode = CHK_splinedefault.Checked;
         }
     }
 }

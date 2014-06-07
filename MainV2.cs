@@ -108,6 +108,8 @@ namespace MissionPlanner
             }
         }
 
+        public static bool ShowAirports { get; set; }
+
         public static event EventHandler AdvancedChanged;
 
         /// <summary>
@@ -263,6 +265,8 @@ namespace MissionPlanner
         {
             log.Info("Mainv2 ctor");
 
+            ShowAirports = true;
+
             Form splash = Program.Splash;
 
             splash.Refresh();
@@ -392,6 +396,11 @@ namespace MissionPlanner
                     }
                     catch { log.Error("Bad Custom theme - reset to standard"); ThemeManager.SetTheme(ThemeManager.Themes.BurntKermit); }
                 }
+            }
+
+            if (MainV2.config["showairports"] != null)
+            {
+                MainV2.ShowAirports = bool.Parse(config["showairports"].ToString());
             }
 
             // load this before the other screens get loaded
@@ -575,9 +584,25 @@ namespace MissionPlanner
 
         }
 
+        private void BGLoadAirports(object nothing)
+        {
+            // read airport list
+            try
+            {
+                Utilities.Airports.ReadOurairports(Application.StartupPath + Path.DirectorySeparatorChar + "airports.csv");
+
+                Utilities.Airports.checkdups = true;
+
+                Utilities.Airports.ReadOpenflights(Application.StartupPath + Path.DirectorySeparatorChar + "airports.dat");
+
+                log.Info("Loaded " + Utilities.Airports.GetAirportCount + " airports");
+            }
+            catch { }
+        }
+
         void POIs_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         {
-           
+
         }
 
         void MenuCustom_Click(object sender, EventArgs e)
@@ -886,6 +911,8 @@ namespace MissionPlanner
                         comPort.logfile = new BufferedStream(File.Open(MainV2.LogDir + Path.DirectorySeparatorChar + DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss") + ".tlog", FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None));
 
                         comPort.rawlogfile = new BufferedStream(File.Open(MainV2.LogDir + Path.DirectorySeparatorChar + DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss") + ".rlog", FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None));
+
+                        log.Info("creating logfile " + DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss") + ".tlog");
                     }
                     catch (Exception exp2) { log.Error(exp2); CustomMessageBox.Show("Failed to create log - wont log this session"); } // soft fail
 
@@ -894,6 +921,9 @@ namespace MissionPlanner
 
                     // do the connect
                     comPort.Open(true);
+
+                    if (!comPort.BaseStream.IsOpen)
+                        throw new Exception("Not connected");
 
                     // detect firmware we are conected to.
                         if (comPort.MAV.cs.firmware == Firmwares.ArduCopter2)
@@ -1773,6 +1803,8 @@ namespace MissionPlanner
             };
             pluginthread.Start();
 
+            ThreadPool.QueueUserWorkItem(BGLoadAirports);
+
             Program.Splash.Close();
 
             try
@@ -2534,5 +2566,12 @@ namespace MissionPlanner
                 this.WindowState = FormWindowState.Maximized;
             }
         }
+
+        private void readonlyToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            MainV2.comPort.ReadOnly = readonlyToolStripMenuItem.Checked;
+        }
+
+     
     }
 }
