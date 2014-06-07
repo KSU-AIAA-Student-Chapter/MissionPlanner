@@ -83,11 +83,12 @@ namespace MissionPlanner
                     );
             }
 
-            public void ResetBootTime(ref DateTime absolute_boot_time_utc, UInt64 time_unix_ms, UInt32 time_boot_ms)
+            public void ResetTime(ref DateTime new_gps_time, ref UInt32 boot_time_last_gps, UInt64 time_unix_ms, UInt32 time_boot_ms)
             {
                 DateTime date_local = DateTime.Now.StartOfWeek(DayOfWeek.Sunday);
-                absolute_boot_time_utc = DateTime.SpecifyKind(date_local, DateTimeKind.Utc);
-                absolute_boot_time_utc = absolute_boot_time_utc.AddMilliseconds(time_unix_ms - time_boot_ms);
+                new_gps_time = DateTime.SpecifyKind(date_local, DateTimeKind.Utc);
+                new_gps_time = new_gps_time.AddMilliseconds(time_unix_ms);
+                boot_time_last_gps = time_boot_ms;
             }
 
         }
@@ -99,6 +100,10 @@ namespace MissionPlanner
         public bool isCameraTriggerEntry = false;
 
         public DateTime absolute_boot_time_utc;
+
+        public DateTime last_gps_time_utc;
+
+        public UInt32 boot_time_at_last_gps;
 
         public bool begin_logging = false;
 
@@ -560,6 +565,8 @@ namespace MissionPlanner
             sqlConnection = OpenAVUSI();
             var t = Type.GetType("Mono.Runtime");
             MONO = (t != null);
+            boot_time_at_last_gps = 0;
+            last_gps_time_utc = DateTime.MinValue;
         }
 
         public void ResetInternals()
@@ -645,8 +652,8 @@ namespace MissionPlanner
                         {
                             linkqualitygcs = 0;
                             // If we have lost a connection zero the boot time and start again
-                            begin_logging = false;
-                            absolute_boot_time_utc = DateTime.MinValue;
+                            //begin_logging = false;
+                            //absolute_boot_time_utc = DateTime.MinValue;
                         }
                         else
                         {
@@ -747,13 +754,15 @@ namespace MissionPlanner
                         // If this is the first SystemTime message and we have a gps lock
                         // initialize the absolute_boot_time_utc variable
                         // Note that systime.time_unix_usec is actually in miliseconds
-                        if (absolute_boot_time_utc == DateTime.MinValue && systime.time_boot_ms != systime.time_unix_usec)
+                        boot_time_at_last_gps = systime.time_boot_ms;
+                        CamDBEntry.ResetTime(ref last_gps_time_utc,ref boot_time_at_last_gps, systime.time_unix_usec, systime.time_boot_ms);
+                        
+                        if(begin_logging == false)
                         {
-                            CamDBEntry.ResetBootTime(ref absolute_boot_time_utc, systime.time_unix_usec, systime.time_boot_ms);
                             begin_logging = true;
                         }
 
-                        DateTime date_utc = absolute_boot_time_utc.AddMilliseconds(systime.time_boot_ms);
+                        DateTime date_utc = last_gps_time_utc;
 
                         if (!isCameraTriggerEntry)
                         {
@@ -1080,7 +1089,7 @@ namespace MissionPlanner
 
                             if (!isCameraTriggerEntry)
                             {
-                                DateTime date_utc = absolute_boot_time_utc.AddMilliseconds(loc.time_boot_ms);
+                                DateTime date_utc = last_gps_time_utc.AddMilliseconds(loc.time_boot_ms - boot_time_at_last_gps);
                                 CamDBEntry.TimeStamp = date_utc;
                                 isCameraTriggerEntry = false;
                             }
