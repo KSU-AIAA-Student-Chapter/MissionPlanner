@@ -93,6 +93,9 @@ namespace MissionPlanner
 
         }
 
+        //public UInt32[] times= new UInt32[100];
+        //public int index=0;
+
         public CameraTriggerDatabaseEntry CamDBEntry = new CameraTriggerDatabaseEntry();
 
         public SqlConnection sqlConnection = null;
@@ -567,6 +570,10 @@ namespace MissionPlanner
             MONO = (t != null);
             boot_time_at_last_gps = 0;
             last_gps_time_utc = DateTime.MinValue;
+            //for(int i =0;i<100;i++)
+            //{
+            //    times[i] = 0;
+            //}
         }
 
         public void ResetInternals()
@@ -1091,7 +1098,18 @@ namespace MissionPlanner
                             {
                                 DateTime date_utc = last_gps_time_utc.AddMilliseconds(loc.time_boot_ms - boot_time_at_last_gps);
                                 CamDBEntry.TimeStamp = date_utc;
-                                isCameraTriggerEntry = false;
+                                //isCameraTriggerEntry = false;
+                                //if(index!=100)
+                                //{
+                                //    index++;
+                                //    times[index] = loc.time_boot_ms;
+                                //}
+                                //else
+                                //{
+                                //    index = 0;
+                                //}
+                           
+ 
                             }
                             else
                             {
