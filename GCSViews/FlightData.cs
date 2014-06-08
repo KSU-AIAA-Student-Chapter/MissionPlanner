@@ -20,6 +20,7 @@ using System.Drawing.Drawing2D;
 using MissionPlanner.Controls;
 using MissionPlanner.Utilities;
 using MissionPlanner.Controls.BackstageView;
+using MissionPlanner.aiaa;
 //using Crom.Controls.Docking;
 using log4net;
 using System.Reflection;
@@ -110,6 +111,8 @@ namespace MissionPlanner.GCSViews
         Script script;
         //whether or not the output console has already started
         bool outputwindowstarted = false;
+
+        private TriggerPhotoListener photoListener = new TriggerPhotoListener();
 
         protected override void Dispose(bool disposing)
         {
@@ -286,6 +289,10 @@ namespace MissionPlanner.GCSViews
 
             // first run
             MainV2_AdvancedChanged(null, null);
+
+            // Setup UDP listener for trigger photo command
+            photoListener.Attach();
+            photoListener.OnCommand += triggerCameraToolStripMenuItem_Click;
         }
 
         internal GMapMarker CurrentGMapMarker;
@@ -1488,6 +1495,9 @@ namespace MissionPlanner.GCSViews
 
         private void FlightData_FormClosing(object sender, FormClosingEventArgs e)
         {
+            // Detatch UDP listener for trigger photo
+            photoListener.Detatch();
+  
             ZedGraphTimer.Stop();
             threadrun = 0;
             try
