@@ -14,6 +14,8 @@ namespace MissionPlanner.aiaa
 
         private UdpClient listener;
 
+        private UdpClient responder;
+
         private IPEndPoint groupEp = new IPEndPoint(IPAddress.Any, listenPort);
 
         public delegate void CommandHandler(object sender, CommandEventArgs e);
@@ -24,7 +26,8 @@ namespace MissionPlanner.aiaa
         {
             if( listener == null )
             {
-                listener = new UdpClient(6516);
+                listener = new UdpClient(6516, AddressFamily.InterNetwork);
+                responder = new UdpClient(AddressFamily.InterNetwork);
                 
                 listener.BeginReceive(new AsyncCallback(receiveAsync), null);
             }
@@ -35,6 +38,7 @@ namespace MissionPlanner.aiaa
             try
             {
                 listener.Close();
+                responder.Close();
             }
             catch( SocketException ex )
             {
@@ -42,15 +46,27 @@ namespace MissionPlanner.aiaa
             }
 
             listener = null;
+            responder = null;
+        }
+
+        private void sendAsync(IAsyncResult res )
+        {
+            responder.EndSend(res);
         }
 
         private void receiveAsync(IAsyncResult res)
         {
-            byte[] data = listener.EndReceive(res, ref groupEp);
+            IPEndPoint rx = new IPEndPoint(IPAddress.Any, 5616); // dummy gets overwritten
+            byte[] data = listener.EndReceive(res, ref rx);
             String s = System.Text.Encoding.ASCII.GetString(data).Trim().ToUpper();
             if( !String.IsNullOrEmpty( s ) && s.StartsWith("SPYKAT: ") && s.Length > 8 )
             {
                 CommandEventArgs args = new CommandEventArgs(s.Substring(8));
+
+                String confirm = "SPYKAT-ACK: " + args.Command;
+                byte[] ack_data = Encoding.ASCII.GetBytes(confirm);
+                responder.BeginSend(ack_data, ack_data.Length, new IPEndPoint( rx.Address, 5616 ), new AsyncCallback(sendAsync), null);
+                
                 if( OnCommand != null )
                 {
                     OnCommand(this, args);
