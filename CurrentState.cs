@@ -1075,7 +1075,9 @@ namespace MissionPlanner
 
                         // the new arhs deadreckoning may send 0 alt and 0 long. check for and undo
 
-                        alt = loc.relative_alt / 1000.0f;
+                        alt = 3.28084f * loc.relative_alt / (1000.0f);
+
+                        float alt_m = loc.relative_alt / 1000.0f;
 
 
                         useLocation = true;
@@ -1240,9 +1242,9 @@ namespace MissionPlanner
                     {
                         var vfr = bytearray.ByteArrayToStructure<MAVLink.mavlink_vfr_hud_t>(6);
 
-                        groundspeed = vfr.groundspeed;
+                        groundspeed = vfr.groundspeed * 1.94384f;
 
-                        airspeed = vfr.airspeed;
+                        airspeed = vfr.airspeed * 1.94384f;
 
                         //alt = vfr.alt; // this might include baro
 
